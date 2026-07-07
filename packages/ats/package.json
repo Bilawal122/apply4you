@@ -1,0 +1,25 @@
+{
+  "name": "@apply4you/ats",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@apply4you/shared": "workspace:*",
+    "node-html-parser": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "playwright-core": "^1.53.0",
+    "typescript": "^5.8.3"
+  }
+}

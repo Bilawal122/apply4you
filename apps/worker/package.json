@@ -1,0 +1,26 @@
+{
+  "name": "@apply4you/worker",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "seed:boards": "tsx src/scripts/seed-boards.ts"
+  },
+  "dependencies": {
+    "@apply4you/ai": "workspace:*",
+    "@apply4you/ats": "workspace:*",
+    "@apply4you/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.50.0",
+    "bullmq": "^5.56.0",
+    "ioredis": "^5.6.1",
+    "playwright": "^1.53.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.3"
+  }
+}
