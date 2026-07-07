@@ -17,13 +17,14 @@ export const QUEUES = {
   embedding: "embedding",
   matching: "matching",
   resolve: "resolve",
-  submitGreenhouse: "submit:greenhouse",
-  submitLever: "submit:lever",
-  submitAshby: "submit:ashby",
-  submitWorkable: "submit:workable",
+  submitGreenhouse: "submit-greenhouse",
+  submitLever: "submit-lever",
+  submitAshby: "submit-ashby",
+  submitWorkable: "submit-workable",
 } as const;
 
-export const submitQueueFor = (atsType: string): string => `submit:${atsType}`;
+// BullMQ forbids ":" in queue names.
+export const submitQueueFor = (atsType: string): string => `submit-${atsType}`;
 
 /** FR-18: phrasing banned from generated text. */
 export const BANNED_PHRASES = [

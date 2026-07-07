@@ -1,6 +1,6 @@
 import { Queue } from "bullmq";
 import { Redis } from "ioredis";
-import { QUEUES } from "@apply4you/shared";
+import { QUEUES, submitQueueFor } from "@apply4you/shared";
 
 /**
  * Thin BullMQ producer — the web app only enqueues; all processing happens in
@@ -36,5 +36,5 @@ export async function enqueueResolve(applicationId: string): Promise<void> {
 }
 
 export async function enqueueSubmit(atsType: string, applicationId: string): Promise<void> {
-  await queue(`submit:${atsType}`).add("submit-application", { applicationId }, { jobId: `submit-${applicationId}` });
+  await queue(submitQueueFor(atsType)).add("submit-application", { applicationId }, { jobId: `submit-${applicationId}` });
 }
