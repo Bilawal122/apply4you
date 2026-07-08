@@ -1,8 +1,16 @@
 @import "tailwindcss";
 
+/*
+  Apply4You design tokens.
+
+  Voice rule: everything the machine produces (scores, statuses, filled values,
+  counts, timestamps) is set in mono; everything human is sans. One accent —
+  deep teal — for actions and success; amber marks "needs you"; brick marks
+  failure. Status color is information, not decoration.
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f6f7f8; /* porcelain */
+  --foreground: #1c2430; /* ink */
 }
 
 @theme inline {
@@ -10,17 +18,51 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-ink: #1c2430;
+  --color-ink-soft: #55606e;
+  --color-paper: #f6f7f8;
+  --color-card: #ffffff;
+  --color-line: #e3e6ea;
+  --color-accent: #0f766e; /* deep teal: actions, submitted */
+  --color-accent-soft: #e4f1ef;
+  --color-attention: #b45309; /* amber: needs the user */
+  --color-attention-soft: #fdf3e3;
+  --color-danger: #b04438; /* brick: failed */
+  --color-danger-soft: #f9ebe9;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Landing hero: the product filling a form, truthfully. CSS only. */
+@keyframes fill-in {
+  0%, 20% {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  35%, 100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero-fill > * {
+  opacity: 0;
+  animation: fill-in 7s ease-out infinite;
+}
+.hero-fill > *:nth-child(1) { animation-delay: 0.4s; }
+.hero-fill > *:nth-child(2) { animation-delay: 1.1s; }
+.hero-fill > *:nth-child(3) { animation-delay: 1.8s; }
+.hero-fill > *:nth-child(4) { animation-delay: 2.5s; }
+.hero-fill > *:nth-child(5) { animation-delay: 3.2s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-fill > * {
+    animation: none;
+    opacity: 1;
+  }
 }

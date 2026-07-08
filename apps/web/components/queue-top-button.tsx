@@ -1,14 +1,15 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { approveAllDrafts } from "@/app/(app)/applications/actions";
+import { queueTopMatches } from "@/app/(app)/actions";
 import { btnPrimary } from "@/components/ui";
 
-export function ApproveAllButton({ draftCount }: { draftCount: number }) {
+export function QueueTopButton({ available }: { available: number }) {
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
+  const n = Math.min(10, available);
 
-  if (draftCount === 0) return null;
+  if (available === 0) return null;
 
   return (
     <div className="flex items-center gap-3">
@@ -17,13 +18,13 @@ export function ApproveAllButton({ draftCount }: { draftCount: number }) {
         disabled={pending}
         onClick={() =>
           startTransition(async () => {
-            const res = await approveAllDrafts();
-            setMessage(res.error ?? `${res.approved} application${res.approved === 1 ? "" : "s"} approved`);
+            const res = await queueTopMatches(n);
+            setMessage(res.error ?? `${res.queued} queued — review them on the Applications page`);
           })
         }
         className={btnPrimary}
       >
-        {pending ? "Approving…" : `Approve all ${draftCount} ready`}
+        {pending ? "Queuing…" : `Queue top ${n}`}
       </button>
       {message && <span className="text-sm text-ink-soft">{message}</span>}
     </div>

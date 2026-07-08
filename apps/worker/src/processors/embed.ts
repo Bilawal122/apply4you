@@ -42,13 +42,26 @@ export function startEmbeddingWorker(): Worker {
     QUEUES.embedding,
     async (job: Job) => {
       if (job.name === "embed-job") return embedOneJob((job.data as EmbedJobData).jobId);
+      // Legacy routing — profile embeds now ride their own queue.
       if (job.name === "embed-profile") return embedOneProfile((job.data as EmbedProfileData).userId);
       throw new Error(`Unknown embedding job: ${job.name}`);
     },
     {
       connection,
       concurrency: 4,
-      limiter: { max: 100, duration: 60_000 }, // stay under Gemini embedding RPM
+      limiter: { max: 90, duration: 60_000 }, // leave RPM headroom for profile embeds
     },
+  );
+}
+
+/** Dedicated lane so a new user's first matches arrive in seconds, not hours. */
+export function startProfileEmbeddingWorker(): Worker {
+  return new Worker(
+    QUEUES.profileEmbedding,
+    async (job: Job) => {
+      if (job.name === "embed-profile") return embedOneProfile((job.data as EmbedProfileData).userId);
+      throw new Error(`Unknown profile-embedding job: ${job.name}`);
+    },
+    { connection, concurrency: 2 },
   );
 }

@@ -2,14 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { signOut } from "../(auth)/actions";
-
-const NAV = [
-  { href: "/feed", label: "Job feed" },
-  { href: "/applications", label: "Applications" },
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/profile", label: "Profile" },
-  { href: "/preferences", label: "Preferences" },
-];
+import { NavLinks } from "@/components/nav-links";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -17,23 +10,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!data?.claims) redirect("/login");
 
   return (
-    <div className="min-h-screen bg-neutral-50">
-      <header className="border-b border-neutral-200 bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+    <div className="min-h-screen bg-paper">
+      <header className="sticky top-0 z-10 border-b border-line bg-card/95 backdrop-blur">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-2.5">
           <div className="flex items-center gap-6">
-            <Link href="/feed" className="text-sm font-bold tracking-tight">
-              Apply4You
+            <Link href="/feed" className="text-sm font-bold tracking-tight text-ink">
+              Apply<span className="text-accent">4</span>You
             </Link>
-            <nav className="flex gap-4">
-              {NAV.map((item) => (
-                <Link key={item.href} href={item.href} className="text-sm text-neutral-600 hover:text-neutral-900">
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
+            <NavLinks />
           </div>
           <form action={signOut}>
-            <button type="submit" className="text-sm text-neutral-500 hover:text-neutral-900">
+            <button type="submit" className="text-sm text-ink-soft transition-colors hover:text-ink">
               Sign out
             </button>
           </form>

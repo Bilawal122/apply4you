@@ -3,9 +3,7 @@
 import { useActionState, useState } from "react";
 import type { Preferences, WorkModel } from "@apply4you/shared";
 import { savePreferences, type SaveState } from "@/app/(app)/actions";
-
-const inputCls = "w-full rounded-md border border-neutral-300 px-3 py-2 text-sm";
-const labelCls = "text-xs font-medium text-neutral-600";
+import { btnPrimary, inputCls, labelCls } from "@/components/ui";
 
 const WORK_MODELS: WorkModel[] = ["remote", "hybrid", "onsite"];
 
@@ -125,14 +123,10 @@ export function PreferencesForm({ initial, redirectTo }: { initial: Preferences;
         onChange={(v) => set("excludedKeywords", v)}
       />
 
-      {state && "error" in state && <p className="text-sm text-red-600">{state.error}</p>}
-      {state && "ok" in state && <p className="text-sm text-green-700">Saved.</p>}
+      {state && "error" in state && <p className="text-sm text-danger">{state.error}</p>}
+      {state && "ok" in state && <p className="text-sm text-accent">Saved.</p>}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="self-start rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-      >
+      <button type="submit" disabled={pending} className={`${btnPrimary} self-start`}>
         {pending ? "Saving…" : redirectTo ? "Save and see your matches" : "Save preferences"}
       </button>
     </form>

@@ -15,6 +15,9 @@ export const MAX_DAILY_CAP = 100;
 export const QUEUES = {
   sourcing: "sourcing",
   embedding: "embedding",
+  // Separate from `embedding`: profile embeds must not queue behind thousands
+  // of job embeds — signup -> first matches should take seconds.
+  profileEmbedding: "profile-embedding",
   matching: "matching",
   resolve: "resolve",
   submitGreenhouse: "submit-greenhouse",

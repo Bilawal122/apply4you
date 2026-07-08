@@ -12,8 +12,8 @@ export default async function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="text-xl font-semibold">Profile</h1>
-      <p className="mb-6 mt-1 text-sm text-neutral-500">
+      <h1 className="text-xl font-semibold text-ink">Profile</h1>
+      <p className="mb-6 mt-1 text-sm text-ink-soft">
         The single source of truth for every application.{" "}
         {row?.resume_filename ? (
           <>
@@ -31,7 +31,7 @@ export default async function ProfilePage() {
       {profile ? (
         <ProfileForm initial={profile} />
       ) : (
-        <p className="text-sm text-neutral-500">
+        <p className="text-sm text-ink-soft">
           No profile yet.{" "}
           <Link href="/onboarding" className="underline">
             Start by uploading your resume.

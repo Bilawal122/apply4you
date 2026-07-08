@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { cardCls } from "@/components/ui";
 
 interface FeedEvent {
   id: number;
@@ -12,14 +13,14 @@ interface FeedEvent {
   created_at: string;
 }
 
-const STATUS_STYLES: Record<string, string> = {
-  submitted: "text-green-700",
-  failed: "text-red-600",
-  submitting: "text-blue-700",
-  approved: "text-neutral-600",
-  draft: "text-neutral-600",
-  needs_review: "text-amber-700",
-  skipped: "text-neutral-400",
+const STATUS_COLORS: Record<string, string> = {
+  submitted: "text-accent",
+  failed: "text-danger",
+  submitting: "text-accent",
+  approved: "text-ink-soft",
+  draft: "text-ink-soft",
+  needs_review: "text-attention",
+  skipped: "text-ink-soft/60",
 };
 
 /** FR-35: live submission feed via Supabase Realtime on application_events. */
@@ -37,7 +38,6 @@ export function LiveFeed({ initialEvents, userId }: { initialEvents: FeedEvent[]
         (payload) => {
           const event = payload.new as FeedEvent;
           setEvents((prev) => [event, ...prev].slice(0, 30));
-          // Status changes move cards between sections — refresh server data.
           if (["submitted", "failed", "draft", "needs_review"].includes(event.status)) router.refresh();
         },
       )
@@ -50,18 +50,20 @@ export function LiveFeed({ initialEvents, userId }: { initialEvents: FeedEvent[]
   if (events.length === 0) return null;
 
   return (
-    <div className="rounded-lg border border-neutral-200 bg-white p-4">
-      <h2 className="mb-2 text-sm font-semibold">Live activity</h2>
-      <ul className="flex flex-col gap-1.5">
+    <div className={`${cardCls} p-4`}>
+      <h2 className="mb-2 text-sm font-semibold text-ink">Live activity</h2>
+      <ul className="flex max-h-48 flex-col gap-1.5 overflow-y-auto">
         {events.map((event) => (
           <li key={event.id} className="flex items-baseline gap-2 text-sm">
-            <span className="shrink-0 text-xs tabular-nums text-neutral-400">
+            <span className="shrink-0 font-mono text-[11px] tabular-nums text-ink-soft/70">
               {new Date(event.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </span>
-            <span className={`text-xs font-medium uppercase ${STATUS_STYLES[event.status] ?? "text-neutral-600"}`}>
+            <span
+              className={`shrink-0 font-mono text-[11px] font-medium lowercase ${STATUS_COLORS[event.status] ?? "text-ink-soft"}`}
+            >
               {event.status.replace("_", " ")}
             </span>
-            <span className="text-neutral-600">{event.message}</span>
+            <span className="text-ink-soft">{event.message}</span>
           </li>
         ))}
       </ul>

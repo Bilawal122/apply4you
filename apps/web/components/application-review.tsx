@@ -3,39 +3,53 @@
 import { useState, useTransition } from "react";
 import type { Field, ResolvedValues, UnresolvedField } from "@apply4you/shared";
 import { approveApplication, saveApplicationFields, skipApplication } from "@/app/(app)/applications/actions";
-
-const inputCls = "w-full rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm";
+import { btnPrimary, btnSecondary, inputCls } from "@/components/ui";
 
 export interface ReviewApp {
   id: string;
   status: string;
   jobTitle: string;
   company: string;
+  applyUrl: string;
   formSchema: Field[];
   resolvedFields: ResolvedValues;
   coverLetter: string | null;
   unresolvedFields: UnresolvedField[];
 }
 
+function isCoverLetterField(f: Field): boolean {
+  return f.type === "textarea" && /cover.?letter/i.test(`${f.id} ${f.label}`);
+}
+
 export function ApplicationReview({ app }: { app: ReviewApp }) {
+  const clField = app.formSchema.find(isCoverLetterField);
   const [expanded, setExpanded] = useState(false);
   const [values, setValues] = useState<ResolvedValues>(app.resolvedFields);
-  const [coverLetter, setCoverLetter] = useState(app.coverLetter ?? "");
+  const [coverLetter, setCoverLetter] = useState(
+    app.coverLetter || (clField ? (app.resolvedFields[clField.id] ?? "") : ""),
+  );
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const editableFields = app.formSchema.filter((f) => f.type !== "file");
-  const requiredGaps = app.unresolvedFields.filter((u) => u.required).length;
+  // resume_text (paste-resume textarea) and EEOC blocks are never filled by
+  // the machine — hide them from review too.
+  const editableFields = app.formSchema.filter(
+    (f) => f.type !== "file" && !isCoverLetterField(f) && f.id !== "resume_text" && !f.id.startsWith("eeo["),
+  );
+  const requiredGaps = app.unresolvedFields.filter((u) => u.required && u.id !== clField?.id).length;
 
   const setValue = (id: string, value: string) => {
     setValues((v) => ({ ...v, [id]: value }));
     setDirty(true);
   };
 
+  const payload = (): ResolvedValues =>
+    clField ? { ...values, [clField.id]: coverLetter || null } : values;
+
   const save = () =>
     startTransition(async () => {
-      const res = await saveApplicationFields(app.id, values, coverLetter || null);
+      const res = await saveApplicationFields(app.id, payload(), coverLetter || null);
       setMessage(res.error ?? "Saved");
       if (!res.error) setDirty(false);
     });
@@ -43,7 +57,7 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
   const approve = () =>
     startTransition(async () => {
       const res = dirty
-        ? await saveApplicationFields(app.id, values, coverLetter || null).then((r) =>
+        ? await saveApplicationFields(app.id, payload(), coverLetter || null).then((r) =>
             r.error ? r : approveApplication(app.id),
           )
         : await approveApplication(app.id);
@@ -57,51 +71,66 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
     });
 
   return (
-    <div className="rounded-lg border border-neutral-200 bg-white">
+    <div className="rounded-lg border border-line bg-card">
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="flex w-full items-center justify-between px-4 py-3 text-left"
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
       >
-        <div>
-          <span className="text-sm font-semibold">{app.jobTitle}</span>
-          <span className="ml-2 text-sm text-neutral-500">{app.company}</span>
+        <div className="min-w-0">
+          <span className="text-sm font-semibold text-ink">{app.jobTitle}</span>
+          <span className="ml-2 text-sm text-ink-soft">{app.company}</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {app.status === "needs_review" ? (
-            <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+            <span className="rounded bg-attention-soft px-1.5 py-0.5 font-mono text-[11px] font-medium text-attention">
               {requiredGaps} answer{requiredGaps === 1 ? "" : "s"} needed
             </span>
           ) : (
-            <span className="rounded bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">Ready</span>
+            <span className="rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[11px] font-medium text-accent">
+              ready
+            </span>
           )}
-          <span className="text-neutral-400">{expanded ? "▾" : "▸"}</span>
+          <span className="text-ink-soft">{expanded ? "▾" : "▸"}</span>
         </div>
       </button>
 
       {expanded && (
-        <div className="border-t border-neutral-100 px-4 py-4">
+        <div className="border-t border-line px-4 py-4">
+          <a
+            href={app.applyUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mb-4 inline-block text-xs text-ink-soft underline decoration-line hover:text-ink"
+          >
+            View the job posting
+          </a>
+
           <div className="flex flex-col gap-3">
             {editableFields.map((field) => {
               const value = values[field.id] ?? "";
               const missing = field.required && !value;
               return (
                 <div key={field.id}>
-                  <label className={`text-xs font-medium ${missing ? "text-amber-700" : "text-neutral-600"}`}>
+                  <label className={`text-xs font-medium ${missing ? "text-attention" : "text-ink-soft"}`}>
                     {field.label}
                     {field.required ? " *" : ""}
                     {missing ? " — needs your answer" : ""}
                   </label>
                   {field.type === "textarea" ? (
                     <textarea
-                      className={inputCls}
+                      className={`${inputCls} font-mono text-xs`}
                       rows={4}
                       maxLength={field.maxLength}
                       value={value ?? ""}
                       onChange={(e) => setValue(field.id, e.target.value)}
                     />
                   ) : field.options?.length && (field.type === "select" || field.type === "radio") ? (
-                    <select className={inputCls} value={value ?? ""} onChange={(e) => setValue(field.id, e.target.value)}>
+                    <select
+                      className={`${inputCls} font-mono text-xs`}
+                      value={value ?? ""}
+                      onChange={(e) => setValue(field.id, e.target.value)}
+                    >
                       <option value="">— not answered —</option>
                       {field.options.map((o) => (
                         <option key={o} value={o}>
@@ -111,7 +140,7 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
                     </select>
                   ) : (
                     <input
-                      className={inputCls}
+                      className={`${inputCls} font-mono text-xs`}
                       maxLength={field.maxLength}
                       value={value ?? ""}
                       onChange={(e) => setValue(field.id, e.target.value)}
@@ -121,35 +150,48 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
                 </div>
               );
             })}
+
+            {(clField || coverLetter) && (
+              <div className="rounded-md border border-line bg-paper p-3">
+                <label className="text-xs font-medium text-ink-soft">
+                  Cover letter {clField?.required ? "*" : "(sent with this application)"}
+                </label>
+                <textarea
+                  className={`${inputCls} mt-1 font-mono text-xs`}
+                  rows={8}
+                  maxLength={clField?.maxLength}
+                  value={coverLetter}
+                  onChange={(e) => {
+                    setCoverLetter(e.target.value);
+                    setDirty(true);
+                  }}
+                />
+              </div>
+            )}
           </div>
 
-          <div className="mt-4 flex items-center gap-2">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={approve}
               disabled={pending || app.status === "needs_review"}
-              className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+              className={btnPrimary}
               title={app.status === "needs_review" ? "Fill the required answers and save first" : undefined}
             >
               Approve &amp; submit
             </button>
-            <button
-              type="button"
-              onClick={save}
-              disabled={pending || !dirty}
-              className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm font-medium disabled:opacity-40"
-            >
+            <button type="button" onClick={save} disabled={pending || !dirty} className={btnSecondary}>
               Save edits
             </button>
             <button
               type="button"
               onClick={skip}
               disabled={pending}
-              className="rounded-md px-3 py-1.5 text-sm text-neutral-500 hover:text-red-600"
+              className="rounded-md px-3 py-2 text-sm text-ink-soft transition-colors hover:text-danger"
             >
               Skip
             </button>
-            {message && <span className="text-xs text-neutral-500">{message}</span>}
+            {message && <span className="text-xs text-ink-soft">{message}</span>}
           </div>
         </div>
       )}

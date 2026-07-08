@@ -1,11 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
+import { cardCls } from "@/components/ui";
 
 function Stat({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
   return (
-    <div className="rounded-lg border border-neutral-200 bg-white p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold">{value}</p>
-      {hint && <p className="mt-0.5 text-xs text-neutral-400">{hint}</p>}
+    <div className={`${cardCls} p-4`}>
+      <p className="text-xs font-medium uppercase tracking-wide text-ink-soft">{label}</p>
+      <p className="mt-1 font-mono text-2xl font-semibold tabular-nums text-ink">{value}</p>
+      {hint && <p className="mt-0.5 text-xs text-ink-soft/70">{hint}</p>}
     </div>
   );
 }
@@ -39,7 +40,7 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-xl font-semibold">Dashboard</h1>
+      <h1 className="mb-6 text-xl font-semibold text-ink">Dashboard</h1>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         <Stat label="Submitted total" value={totalSubmitted ?? 0} />
         <Stat label="Submitted today" value={submittedToday ?? 0} />

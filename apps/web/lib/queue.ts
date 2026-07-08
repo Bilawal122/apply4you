@@ -28,7 +28,11 @@ function queue(name: string): Queue {
 }
 
 export async function enqueueProfileEmbedding(userId: string): Promise<void> {
-  await queue(QUEUES.embedding).add("embed-profile", { userId }, { jobId: `embed-profile-${userId}-${Date.now()}` });
+  await queue(QUEUES.profileEmbedding).add(
+    "embed-profile",
+    { userId },
+    { jobId: `embed-profile-${userId}-${Date.now()}` },
+  );
 }
 
 export async function enqueueResolve(applicationId: string): Promise<void> {

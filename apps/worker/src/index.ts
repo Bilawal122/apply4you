@@ -1,7 +1,7 @@
 import { registerAllAdapters } from "@apply4you/ats";
 import { connection } from "./queues.js";
 import { schedulePolling, startSourcingWorker } from "./processors/source-poll.js";
-import { startEmbeddingWorker } from "./processors/embed.js";
+import { startEmbeddingWorker, startProfileEmbeddingWorker } from "./processors/embed.js";
 import { scheduleNightlyMatching, startMatchingWorker } from "./processors/match.js";
 import { startResolveWorker } from "./processors/resolve.js";
 import { startSubmitWorkers } from "./processors/submit.js";
@@ -18,6 +18,7 @@ async function main(): Promise<void> {
 
   await scheduleNightlyMatching();
   startEmbeddingWorker();
+  startProfileEmbeddingWorker();
   startMatchingWorker();
   console.log("[worker] embedding + matching workers started");
 

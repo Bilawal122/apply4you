@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ApplicationReview, type ReviewApp } from "@/components/application-review";
 import { ApproveAllButton } from "@/components/approve-all-button";
 import { LiveFeed } from "@/components/live-feed";
+import { StatusBadge } from "@/components/ui";
 
 interface AppRow {
   id: string;
@@ -58,6 +59,7 @@ export default async function ApplicationsPage() {
     status: row.status,
     jobTitle: row.jobs.title,
     company: row.jobs.company,
+    applyUrl: row.jobs.apply_url,
     formSchema: row.form_schema ?? [],
     resolvedFields: row.resolved_fields ?? {},
     coverLetter: row.cover_letter,
@@ -66,10 +68,10 @@ export default async function ApplicationsPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold">Applications</h1>
-          <p className="mt-1 text-sm text-neutral-500">
+          <h1 className="text-xl font-semibold text-ink">Applications</h1>
+          <p className="mt-1 text-sm text-ink-soft">
             Review what the AI filled in, fix anything, then approve. Nothing is submitted without your
             approval.
           </p>
@@ -80,11 +82,11 @@ export default async function ApplicationsPage() {
       {user && <LiveFeed initialEvents={eventRows ?? []} userId={user.id} />}
 
       <section>
-        <h2 className="mb-3 text-sm font-semibold text-neutral-700">
-          Waiting for review ({pending.length})
+        <h2 className="mb-3 text-sm font-semibold text-ink">
+          Waiting for review <span className="font-mono text-ink-soft">({pending.length})</span>
         </h2>
         {pending.length === 0 ? (
-          <p className="text-sm text-neutral-500">
+          <p className="text-sm text-ink-soft">
             Nothing to review. Queue jobs from the <Link href="/feed" className="underline">feed</Link>.
           </p>
         ) : (
@@ -97,21 +99,21 @@ export default async function ApplicationsPage() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-sm font-semibold text-neutral-700">Recent</h2>
+        <h2 className="mb-3 text-sm font-semibold text-ink">Recent</h2>
         {recent.length === 0 ? (
-          <p className="text-sm text-neutral-500">No submissions yet.</p>
+          <p className="text-sm text-ink-soft">No submissions yet.</p>
         ) : (
           <ul className="flex flex-col gap-1.5">
             {recent.map((row) => (
               <li
                 key={row.id}
-                className="flex items-center justify-between rounded-md border border-neutral-200 bg-white px-3 py-2 text-sm"
+                className="flex items-center justify-between gap-3 rounded-md border border-line bg-card px-3 py-2 text-sm"
               >
-                <span>
-                  <span className="font-medium">{row.jobs.title}</span>
-                  <span className="text-neutral-500"> · {row.jobs.company}</span>
+                <span className="min-w-0">
+                  <span className="font-medium text-ink">{row.jobs.title}</span>
+                  <span className="text-ink-soft"> · {row.jobs.company}</span>
                   {row.status === "failed" && row.failure_reason && (
-                    <span className="ml-2 text-xs text-red-500">
+                    <span className="ml-2 text-xs text-danger">
                       {row.failure_reason.slice(0, 80)} —{" "}
                       <a href={row.jobs.apply_url} target="_blank" rel="noreferrer" className="underline">
                         apply manually
@@ -119,19 +121,7 @@ export default async function ApplicationsPage() {
                     </span>
                   )}
                 </span>
-                <span
-                  className={`rounded px-2 py-0.5 text-xs font-medium ${
-                    row.status === "submitted"
-                      ? "bg-green-100 text-green-800"
-                      : row.status === "failed"
-                        ? "bg-red-100 text-red-700"
-                        : row.status === "skipped"
-                          ? "bg-neutral-100 text-neutral-500"
-                          : "bg-blue-100 text-blue-800"
-                  }`}
-                >
-                  {row.status.replace("_", " ")}
-                </span>
+                <StatusBadge status={row.status} />
               </li>
             ))}
           </ul>

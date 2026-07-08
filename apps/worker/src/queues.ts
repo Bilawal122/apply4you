@@ -7,6 +7,7 @@ const connection = createRedisConnection();
 export const queues = {
   sourcing: new Queue(QUEUES.sourcing, { connection }),
   embedding: new Queue(QUEUES.embedding, { connection }),
+  profileEmbedding: new Queue(QUEUES.profileEmbedding, { connection }),
   matching: new Queue(QUEUES.matching, { connection }),
   resolve: new Queue(QUEUES.resolve, { connection }),
   submitGreenhouse: new Queue(QUEUES.submitGreenhouse, { connection }),

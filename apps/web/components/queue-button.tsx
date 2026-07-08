@@ -2,17 +2,18 @@
 
 import { useState, useTransition } from "react";
 import { queueApplication } from "@/app/(app)/actions";
+import { btnSecondary } from "@/components/ui";
 
 export function QueueButton({ jobId }: { jobId: string }) {
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<"queued" | string | null>(null);
 
   if (result === "queued") {
-    return <span className="text-sm font-medium text-green-700">Queued ✓</span>;
+    return <span className="font-mono text-xs font-medium text-accent">queued ✓</span>;
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex shrink-0 flex-col items-end gap-1">
       <button
         type="button"
         disabled={pending}
@@ -22,11 +23,11 @@ export function QueueButton({ jobId }: { jobId: string }) {
             setResult(res.error ?? "queued");
           })
         }
-        className="rounded-md bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50"
+        className={btnSecondary}
       >
-        {pending ? "Queuing…" : "Queue application"}
+        {pending ? "Queuing…" : "Queue"}
       </button>
-      {result && result !== "queued" && <span className="text-xs text-red-600">{result}</span>}
+      {result && result !== "queued" && <span className="max-w-40 text-right text-xs text-danger">{result}</span>}
     </div>
   );
 }

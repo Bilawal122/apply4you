@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { rowToPreferences, type PreferencesRow } from "@/lib/profile";
 import { PreferencesForm } from "@/components/preferences-form";
+import { OnboardingSteps } from "@/components/onboarding-steps";
 
 export default async function PreferencesPage({
   searchParams,
@@ -17,8 +18,9 @@ export default async function PreferencesPage({
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="text-xl font-semibold">Job preferences</h1>
-      <p className="mb-6 mt-1 text-sm text-neutral-500">
+      {onboarding && <OnboardingSteps current={3} />}
+      <h1 className="text-xl font-semibold text-ink">Job preferences</h1>
+      <p className="mb-6 mt-1 text-sm text-ink-soft">
         What should we look for? Jobs are matched and ranked against these.
       </p>
       <PreferencesForm initial={rowToPreferences(row)} redirectTo={onboarding ? "feed" : undefined} />
