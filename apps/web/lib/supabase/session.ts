@@ -30,7 +30,13 @@ export async function updateSession(request: NextRequest) {
   const isAuthed = Boolean(data?.claims);
   const { pathname } = request.nextUrl;
   const isAuthRoute = pathname.startsWith("/login") || pathname.startsWith("/signup");
-  const isPublic = isAuthRoute || pathname === "/";
+  const isPublic =
+    isAuthRoute ||
+    pathname === "/" ||
+    pathname.startsWith("/auth") || // email-link landing + error page
+    pathname.startsWith("/forgot-password");
+  // /update-password is intentionally NOT public: the recovery link creates a
+  // session, so only link-holders (or signed-in users) reach it.
 
   if (!isAuthed && !isPublic) {
     const url = request.nextUrl.clone();

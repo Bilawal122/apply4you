@@ -23,12 +23,17 @@ export default function LoginPage() {
           {pending ? "Signing in…" : "Sign in"}
         </button>
       </form>
-      <p className="text-sm text-ink-soft">
-        No account?{" "}
-        <Link href="/signup" className="font-medium text-accent underline">
-          Sign up
+      <div className="flex items-center justify-between text-sm text-ink-soft">
+        <span>
+          No account?{" "}
+          <Link href="/signup" className="font-medium text-accent underline">
+            Sign up
+          </Link>
+        </span>
+        <Link href="/forgot-password" className="underline">
+          Forgot password?
         </Link>
-      </p>
+      </div>
     </main>
   );
 }

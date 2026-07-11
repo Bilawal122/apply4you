@@ -1,16 +1,17 @@
 import type { Page } from "playwright-core";
 import type { Field, ResolvedValues, SubmitResult } from "@apply4you/shared";
 import type { JobRef, LocalFile } from "../types.js";
-import { cssEscape, detectCommonBlocks, humanPause, pickComboOption, typeInto } from "../fill-helpers.js";
+import { cssEscape, detectCommonBlocks, humanPause, pickComboOption, resolveControl, typeInto } from "../fill-helpers.js";
 
 const MULTI_SEP = "||";
 
 /**
- * Canonical hosted form URL. absolute_url often points at the company's own
- * careers page; the Greenhouse-hosted form is always fillable here.
+ * Canonical fillable form URL: the embed application endpoint. Companies that
+ * redirect their hosted board to their own careers site (e.g. Stripe) still
+ * serve the raw form here — verified live 2026-07.
  */
 export function greenhouseFillUrl(job: JobRef): string {
-  return `https://job-boards.greenhouse.io/${job.boardSlug}/jobs/${job.externalId}`;
+  return `https://boards.greenhouse.io/embed/job_app?for=${encodeURIComponent(job.boardSlug)}&token=${encodeURIComponent(job.externalId)}`;
 }
 
 function controlFor(page: Page, fieldId: string) {
@@ -39,26 +40,55 @@ export async function fillGreenhouseForm(
     const value = values[field.id];
     if (value == null || value === "") continue;
 
-    if (field.type === "select" || field.type === "multiselect") {
-      const parts = field.type === "multiselect" ? value.split(MULTI_SEP).map((p) => p.trim()) : [value];
-      const combo = page
-        .locator(`[aria-labelledby*="${field.id}"], #${cssEscape(field.id)}, [name="${field.id}"]`)
-        .first();
-      for (const part of parts) {
-        await pickComboOption(page, combo, part);
-      }
-      continue;
+    // One awkward control must never abort the whole application: fill what we
+    // can. A required field left empty surfaces as a submit validation error,
+    // recorded with an "apply manually" link — never a silent wrong answer.
+    try {
+      await fillOneField(page, field, value);
+    } catch (err) {
+      console.error(`[greenhouse fill] ${field.id} (${field.label.slice(0, 50)}) failed: ${String(err).slice(0, 120)}`);
     }
+  }
+}
 
-    const control = controlFor(page, field.id);
-    if ((await control.count()) === 0) continue;
-    const tag = await control.evaluate((el: { tagName: string }) => el.tagName.toLowerCase()).catch(() => "input");
-    if (tag === "select") {
-      await control.selectOption({ label: value });
-      await humanPause();
-    } else {
-      await typeInto(control, value);
+async function fillOneField(page: Page, field: Field, value: string): Promise<void> {
+  if (field.type === "multiselect") {
+    const parts = value.split(MULTI_SEP).map((p) => p.trim());
+    // Greenhouse renders multi_value_multi_select as a checkbox group, not a
+    // combobox. Check by accessible name (the country/option label).
+    const group = page.locator(`[id="${field.id}"]`).first();
+    const isCheckboxGroup = (await page.locator(`input[type="checkbox"][name="${field.id}"]`).count()) > 0;
+    if (isCheckboxGroup) {
+      for (const part of parts) {
+        const box = group.getByRole("checkbox", { name: part, exact: true }).first();
+        if ((await box.count()) > 0) {
+          await box.scrollIntoViewIfNeeded().catch(() => undefined);
+          await box.check().catch(() => box.click());
+          await humanPause(80, 200);
+        }
+      }
+      return;
     }
+    // Fallback: react-select multi combobox.
+    const combo = await resolveControl(page, field.id);
+    for (const part of parts) await pickComboOption(page, combo, part);
+    return;
+  }
+
+  if (field.type === "select") {
+    const combo = await resolveControl(page, field.id);
+    await pickComboOption(page, combo, value);
+    return;
+  }
+
+  const control = controlFor(page, field.id);
+  if ((await control.count()) === 0) return;
+  const tag = await control.evaluate((el: { tagName: string }) => el.tagName.toLowerCase()).catch(() => "input");
+  if (tag === "select") {
+    await control.selectOption({ label: value });
+    await humanPause();
+  } else {
+    await typeInto(control, value);
   }
 }
 

@@ -37,3 +37,45 @@ export async function signOut(): Promise<void> {
   await supabase.auth.signOut();
   redirect("/login");
 }
+
+export type ResetState = { error: string } | { sent: true } | null;
+
+export async function requestPasswordReset(_prev: ResetState, formData: FormData): Promise<ResetState> {
+  const email = String(formData.get("email") ?? "").trim();
+  if (!email) return { error: "Enter your email address." };
+
+  const supabase = await createClient();
+  const appUrl = process.env.APP_URL ?? "http://localhost:3000";
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${appUrl}/auth/confirm?next=/update-password`,
+  });
+  // Same response whether or not the account exists — no user enumeration.
+  if (error && !/rate/i.test(error.message)) {
+    console.error("[auth] resetPasswordForEmail:", error.message);
+  }
+  if (error && /rate/i.test(error.message)) return { error: "Too many requests — try again in a minute." };
+  return { sent: true };
+}
+
+export type UpdatePasswordState = { error: string } | null;
+
+export async function updatePassword(
+  _prev: UpdatePasswordState,
+  formData: FormData,
+): Promise<UpdatePasswordState> {
+  const password = String(formData.get("password") ?? "");
+  const confirm = String(formData.get("confirm") ?? "");
+  if (password.length < 8) return { error: "Password must be at least 8 characters." };
+  if (password !== confirm) return { error: "Passwords don't match." };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Your reset link expired — request a new one." };
+
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) return { error: error.message };
+
+  redirect("/feed");
+}
