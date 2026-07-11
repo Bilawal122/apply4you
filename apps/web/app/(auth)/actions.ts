@@ -74,6 +74,12 @@ export async function updatePassword(
   } = await supabase.auth.getUser();
   if (!user) return { error: "Your reset link expired — request a new one." };
 
+  // Note: this authorizes on any valid session (the standard Supabase recovery
+  // pattern — the recovery link mints a full session via verifyOtp). There is
+  // no in-app "change password" surface, so /update-password is only reachable
+  // via a recovery link or an already-authenticated session. When we add a
+  // settings "change password" flow, require the current password there
+  // (updateUser supports `current_password`).
   const { error } = await supabase.auth.updateUser({ password });
   if (error) return { error: error.message };
 

@@ -60,8 +60,11 @@ export async function typeInto(locator: Locator, value: string, { reactSafe = fa
  * until options actually render.
  */
 async function openComboMenu(page: Page, control: Locator): Promise<boolean> {
-  const alreadyOpen = await page.getByRole("option").first().isVisible().catch(() => false);
-  if (alreadyOpen) return true;
+  // Dismiss any menu a previous field left open (react-select multiselects stay
+  // open after a selection). Without this, a page-global option match could
+  // click a leftover option belonging to the previous control — a wrong answer.
+  await page.keyboard.press("Escape").catch(() => undefined);
+  await humanPause(60, 140);
 
   const targets: Locator[] = [
     control,
@@ -145,35 +148,87 @@ async function visible(page: Page, selector: string): Promise<boolean> {
   return (await el.count()) > 0 && (await el.isVisible().catch(() => false));
 }
 
+async function anyVisible(page: Page, selectors: string[]): Promise<boolean> {
+  for (const s of selectors) if (await visible(page, s)) return true;
+  return false;
+}
+
+/** True once the widget has written a non-empty response token (solved / auto-passed). */
+async function hasResponseToken(page: Page, tokenName: string): Promise<boolean> {
+  const el = page.locator(`textarea[name="${tokenName}"], input[name="${tokenName}"]`).first();
+  if ((await el.count()) === 0) return false;
+  const value = await el.inputValue().catch(() => "");
+  return value.length > 0;
+}
+
+/**
+ * A visible challenge widget is a block only if it is UNSOLVED. Managed/
+ * non-interactive Turnstile and hCaptcha render a visible widget that
+ * auto-resolves for legitimate traffic — waiting for the response token
+ * distinguishes "auto-passed" (token present) from "needs a human" (token
+ * stays empty). Returns true only when the widget is present but unsolved.
+ */
+async function unsolvedChallenge(page: Page, widgetSelectors: string[], tokenName: string): Promise<boolean> {
+  if (!(await anyVisible(page, widgetSelectors))) return false;
+  for (let i = 0; i < 6; i++) {
+    if (await hasResponseToken(page, tokenName)) return false; // auto-passed / already solved
+    await page.waitForTimeout(500);
+  }
+  return true;
+}
+
+/**
+ * reCAPTCHA v2 checkbox: a VISIBLE anchor iframe that is NOT inside the v3
+ * `.grecaptcha-badge` (the invisible ambient-scoring badge). Both v2 and v3
+ * anchors share title="reCAPTCHA" / api2/anchor, so the badge-ancestor test is
+ * the discriminator — and it catches JS-rendered v2 widgets that carry no
+ * `data-sitekey` attribute. Blocks only while unsolved.
+ */
+async function unsolvedRecaptchaV2(page: Page): Promise<boolean> {
+  const anchors = page.locator('iframe[src*="/recaptcha/"][src*="anchor"], iframe[title="reCAPTCHA"]');
+  const n = await anchors.count();
+  let hasCheckbox = false;
+  for (let i = 0; i < n; i++) {
+    const a = anchors.nth(i);
+    if (!(await a.isVisible().catch(() => false))) continue;
+    const inBadge = await a
+      .evaluate((el: { closest?: (s: string) => unknown }) => !!(el.closest && el.closest(".grecaptcha-badge")))
+      .catch(() => false);
+    if (!inBadge) {
+      hasCheckbox = true;
+      break;
+    }
+  }
+  if (!hasCheckbox) return false;
+  for (let i = 0; i < 6; i++) {
+    if (await hasResponseToken(page, "g-recaptcha-response")) return false;
+    await page.waitForTimeout(500);
+  }
+  return true;
+}
+
 /**
  * CAPTCHA / bot-wall detection shared by all adapters. Never bypassed (FR-34).
  *
- * Critical distinction: reCAPTCHA v3 renders an invisible scoring badge
- * (`.grecaptcha-badge`, a ~256x60 anchor iframe) on nearly every Greenhouse
- * and Ashby form. That is ambient background scoring, NOT a challenge — it
- * does not block form fill or submission. Only an actual interactive challenge
- * blocks: a v2 "I'm not a robot" checkbox, the image-grid challenge popup, or
- * hCaptcha/Turnstile widgets.
+ * A challenge counts as a block only when it is present AND unsolved (its
+ * response token is empty). This correctly ignores reCAPTCHA v3's ambient
+ * scoring badge and managed/non-interactive Turnstile/hCaptcha that auto-pass,
+ * while still catching real interactive challenges — including JS-rendered v2
+ * checkboxes that carry no `data-sitekey` attribute.
  */
 export async function detectCommonBlocks(page: Page): Promise<BlockKind> {
-  // hCaptcha / Turnstile: any visible instance is an active challenge.
-  if (
-    (await visible(page, 'iframe[src*="hcaptcha"]')) ||
-    (await visible(page, "#h-captcha")) ||
-    (await visible(page, 'iframe[src*="turnstile"]')) ||
-    (await visible(page, ".cf-turnstile"))
-  ) {
+  if (await unsolvedChallenge(page, ['iframe[src*="turnstile"]', ".cf-turnstile"], "cf-turnstile-response")) {
+    return "captcha";
+  }
+  if (await unsolvedChallenge(page, ['iframe[src*="hcaptcha"]', "#h-captcha"], "h-captcha-response")) {
+    return "captcha";
+  }
+  if (await unsolvedRecaptchaV2(page)) {
     return "captcha";
   }
 
-  // reCAPTCHA v2 checkbox (explicit, non-invisible widget).
-  if (await visible(page, '.g-recaptcha[data-sitekey]:not([data-size="invisible"])')) {
-    return "captcha";
-  }
-
-  // reCAPTCHA image-grid challenge popup (the "bframe"). The v3 anchor/badge
-  // also matches src*="recaptcha", so exclude it by size — the badge is short,
-  // a real challenge is a tall popup.
+  // reCAPTCHA image-grid challenge popup (the "bframe"): a tall visible popup,
+  // distinct from the short v3 badge anchor.
   const challenge = page.locator('iframe[src*="/recaptcha/"][src*="bframe"], iframe[title*="challenge" i]').first();
   if ((await challenge.count()) > 0 && (await challenge.isVisible().catch(() => false))) {
     const box = await challenge.boundingBox().catch(() => null);
