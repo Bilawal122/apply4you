@@ -105,23 +105,20 @@ export default async function ApplicationsPage() {
         ) : (
           <ul className="flex flex-col gap-1.5">
             {recent.map((row) => (
-              <li
-                key={row.id}
-                className="flex items-center justify-between gap-3 rounded-md border border-line bg-card px-3 py-2 text-sm"
-              >
-                <span className="min-w-0">
-                  <span className="font-medium text-ink">{row.jobs.title}</span>
-                  <span className="text-ink-soft"> · {row.jobs.company}</span>
-                  {row.status === "failed" && row.failure_reason && (
-                    <span className="ml-2 text-xs text-danger">
-                      {row.failure_reason.slice(0, 80)} —{" "}
-                      <a href={row.jobs.apply_url} target="_blank" rel="noreferrer" className="underline">
-                        apply manually
-                      </a>
-                    </span>
-                  )}
-                </span>
-                <StatusBadge status={row.status} />
+              <li key={row.id}>
+                <Link
+                  href={`/applications/${row.id}`}
+                  className="flex items-center justify-between gap-3 rounded-md border border-line bg-card px-3 py-2 text-sm transition-colors hover:border-ink-soft/40"
+                >
+                  <span className="min-w-0 truncate">
+                    <span className="font-medium text-ink">{row.jobs.title}</span>
+                    <span className="text-ink-soft"> · {row.jobs.company}</span>
+                    {row.status === "failed" && row.failure_reason && (
+                      <span className="ml-2 text-xs text-danger">{row.failure_reason.slice(0, 60)}</span>
+                    )}
+                  </span>
+                  <StatusBadge status={row.status} />
+                </Link>
               </li>
             ))}
           </ul>
