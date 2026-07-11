@@ -1,67 +1,295 @@
 ats_type,slug,company_name
-greenhouse,stripe,Stripe
+ashby,1password,1Password
+ashby,airwallex,Airwallex
+ashby,alan,Alan
+ashby,attio,Attio
+ashby,away,Away
+ashby,benchling,Benchling
+ashby,brigit,Brigit
+ashby,brooklinen,Brooklinen
+ashby,camunda,Camunda
+ashby,cerebras,Cerebras
+ashby,clickhouse,ClickHouse
+ashby,coder,Coder
+ashby,cohere,Cohere
+ashby,confluent,Confluent
+ashby,cursor,Cursor
+ashby,deel,Deel
+ashby,deliveroo,Deliveroo
+ashby,docker,Docker
+ashby,elevenlabs,ElevenLabs
+ashby,eliseai,EliseAI
+ashby,flock,Flock
+ashby,found,Found
+ashby,fyst,FYST
+ashby,gc-ai,GC AI
+ashby,harvey,Harvey
+ashby,hiya,Hiya
+ashby,hopper,Hopper
+ashby,lemonade,Lemonade
+ashby,level-ai,Level AI
+ashby,linear,Linear
+ashby,miro,Miro
+ashby,modal,Modal
+ashby,notable,Notable
+ashby,notion,Notion
+ashby,openai,OpenAI
+ashby,pano-ai,Pano AI
+ashby,perplexity,Perplexity
+ashby,phrase,Phrase
+ashby,plaid,Plaid
+ashby,planday,Planday
+ashby,possible-finance,Possible Finance
+ashby,posthog,PostHog
+ashby,preql,Preql AI
+ashby,quora,Quora
+ashby,ramp,Ramp
+ashby,render,Render
+ashby,replit,Replit
+ashby,retell-ai,Retell AI
+ashby,runway,Runway
+ashby,sierra,Sierra
+ashby,snowflake,Snowflake
+ashby,stytch,Stytch
+ashby,supabase,Supabase
+ashby,tenexlabs,Tenex
+ashby,toogoodtogo,Too Good To Go
+ashby,uipath,UiPath
+ashby,vanta,Vanta
+ashby,whop,Whop
+ashby,workos,WorkOS
+ashby,zapier,Zapier
+greenhouse,affirm,Affirm
 greenhouse,airbnb,Airbnb
-greenhouse,pinterest,Pinterest
+greenhouse,airtable,Airtable
+greenhouse,algolia,Algolia
+greenhouse,amplitude,Amplitude
+greenhouse,anthropic,Anthropic
+greenhouse,arceeai,Arcee AI
+greenhouse,arizeai,Arize AI
+greenhouse,asana,Asana
+greenhouse,bessemerventurepartners,Bessemer Venture Partners
+greenhouse,brex,Brex
+greenhouse,canonical,Canonical
+greenhouse,carta,Carta
+greenhouse,checkr,Checkr
+greenhouse,chime,Chime
+greenhouse,circleci,CircleCI
+greenhouse,clickhouse,ClickHouse
+greenhouse,cloudflare,Cloudflare
 greenhouse,coinbase,Coinbase
+greenhouse,coursera,Coursera
 greenhouse,databricks,Databricks
-greenhouse,gitlab,GitLab
+greenhouse,datadog,Datadog
+greenhouse,dialpad,Dialpad
+greenhouse,discord,Discord
 greenhouse,doordashusa,DoorDash
 greenhouse,dropbox,Dropbox
-greenhouse,instacart,Instacart
-greenhouse,robinhood,Robinhood
-greenhouse,lyft,Lyft
-greenhouse,twilio,Twilio
-greenhouse,cloudflare,Cloudflare
-greenhouse,mongodb,MongoDB
-greenhouse,datadog,Datadog
-greenhouse,asana,Asana
-greenhouse,brex,Brex
-greenhouse,checkr,Checkr
-greenhouse,gusto,Gusto
-greenhouse,flexport,Flexport
-greenhouse,anthropic,Anthropic
+greenhouse,duolingo,Duolingo
+greenhouse,elastic,Elastic
+greenhouse,fastly,Fastly
 greenhouse,figma,Figma
+greenhouse,fireworksai,Fireworks AI
+greenhouse,flexport,Flexport
+greenhouse,gitlab,GitLab
+greenhouse,grafanalabs,Grafana Labs
+greenhouse,gusto,Gusto
+greenhouse,imply,Imply
+greenhouse,instacart,Instacart
+greenhouse,intercom,Intercom
+greenhouse,lattice,Lattice
+greenhouse,launchdarkly,LaunchDarkly
+greenhouse,lucidsoftware,Lucid
+greenhouse,lyft,Lyft
+greenhouse,marqeta,Marqeta
+greenhouse,mercury,Mercury
+greenhouse,mongodb,MongoDB
+greenhouse,okta,Okta
+greenhouse,pinterest,Pinterest
+greenhouse,planetscale,PlanetScale
+greenhouse,postman,Postman
 greenhouse,reddit,Reddit
-greenhouse,discord,Discord
+greenhouse,remotecom,Remote.com
+greenhouse,riotgames,Riot Games
+greenhouse,ripple,Ripple
+greenhouse,robinhood,Robinhood
 greenhouse,roblox,Roblox
 greenhouse,samsara,Samsara
-greenhouse,airtable,Airtable
-greenhouse,benchling,Benchling
-greenhouse,affirm,Affirm
-greenhouse,chime,Chime
-greenhouse,carta,Carta
-greenhouse,vercel,Vercel
-greenhouse,elastic,Elastic
-greenhouse,hashicorp,HashiCorp
-greenhouse,grammarly,Grammarly
-greenhouse,duolingo,Duolingo
-greenhouse,opendoor,Opendoor
-greenhouse,intercom,Intercom
-greenhouse,amplitude,Amplitude
 greenhouse,scaleai,Scale AI
-lever,palantir,Palantir
-lever,mistral,Mistral AI
-lever,netlify,Netlify
-lever,highspot,Highspot
-lever,zoox,Zoox
-lever,plusgrade,Plusgrade
-lever,valon,Valon
+greenhouse,scopely,Scopely
+greenhouse,sentinellabs,SentinelOne
+greenhouse,singlestore,SingleStore
+greenhouse,sofi,SoFi
+greenhouse,spacex,SpaceX
+greenhouse,stockx,StockX
+greenhouse,stripe,Stripe
+greenhouse,sumologic,Sumo Logic
+greenhouse,twilio,Twilio
+greenhouse,twitch,Twitch
+greenhouse,typeform,Typeform
+greenhouse,udacity,Udacity
+greenhouse,upstart,Upstart
+greenhouse,vercel,Vercel
+greenhouse,xai,xAI
+greenhouse,yugabyte,Yugabyte
+lever,100ms,100MS
+lever,15five,15Five
+lever,1inch,1inch
+lever,360learning,360Learning
+lever,3pillarglobal,3Pillar
+lever,ableserve,ABM Industries
+lever,Academy,Academy
+lever,acceldata,Acceldata
+lever,achievers,Achievers
+lever,actian,Actian Corporation
+lever,activetheory,Active Theory
+lever,adora,Adora Technologies
+lever,advocate,Advocate
+lever,aero,Aero
+lever,afero,Afero
+lever,agicap,Agicap
+lever,agiloft,Agiloft
+lever,AIFund,AIFund
+lever,airalo,Airalo
+lever,aircall,Aircall
+lever,airdna,AirDNA
+lever,airtm,Airtm
+lever,akabrands,a.k.a. Brands
+lever,alector,Alector
+lever,aledade,Aledade
+lever,aleph,Aleph
+lever,alice-bob,Alice & Bob
+lever,alimentiv-2,Alimentiv
+lever,allegiantair,Allegiant
+lever,alluxio,Alluxio
+lever,alpinestars,Alpinestars
+lever,amberelectric,Amber Electric
+lever,ammobia,Ammobia
+lever,ampd-energy,Ampd Energy
+lever,analogfolk,AnalogFolk
+lever,anavationllc,AnaVation
+lever,anchorage,Anchorage Digital
+lever,angellist,AngelList
+lever,animocabrands,Animoca Brands
+lever,anomali,Anomali
+lever,anyscale,Anyscale
+lever,apex-ai,Apex.AI
+lever,appen,Appen
+lever,appfollow,AppFollow
+lever,applydigital,APPLY
+lever,Aprio,Aprio
+lever,arbitrum-opco,Arbitrum OpCo
+lever,arcteryx.com,ARC'TERYX
+lever,articulate,Articulate
+lever,asapp-2,ASAPP
+lever,ashoka,Ashoka
+lever,assist-world,Assist World
+lever,ataccama,Ataccama
+lever,atomcomputing,Atom Computing
+lever,audinate,Audinate
+lever,authentic8,Authentic8
+lever,autofi,AutoFi
+lever,avalerehealth,Avalere Health
+lever,avero,Avero
+lever,avertium,Avertium
+lever,azul,Azul
+lever,backerkit,BackerKit
+lever,bannerbank,Banner Bank
+lever,baselane,Baselane
+lever,basis,Basis
+lever,bazaarvoice,Bazaarvoice
+lever,beautybarrage,Beauty Barrage
+lever,benchsci,BenchSci
+lever,bentoboxent,Bento Box Entertainment
+lever,bespokepost,Bespoke Post
+lever,BestEgg,Best Egg
+lever,betterlifepartners,Better Life Partners
+lever,bigblue,Bigblue
+lever,binance,Binance
+lever,blablacar,BlaBlaCar
+lever,BlackCloak,BlackCloak
+lever,blinkux,Blinkux
+lever,bloomon,Bloom & Wild Group
+lever,bluebottlecoffee,Blue Bottle Coffee
+lever,blueland,Blueland
+lever,bluelightconsulting,BlueLight Consulting
+lever,bluesight,Bluesight
+lever,bounteous,Bounteous
+lever,brightedge,BrightEdge
+lever,brightmachines,Bright Machines
+lever,brilliant,Brilliant
+lever,britecore,BriteCore
+lever,brooksrunning,Brooks Running
+lever,buckmason,Buck Mason
+lever,bumbleinc,Bumble Inc.
+lever,c12qe,C12 Quantum Electronics
+lever,cloudinary,Cloudinary
+lever,crytek,Crytek
+lever,demiurgestudios,Demiurge Studios
 lever,entrata,Entrata
+lever,fanatee,Fanatee
+lever,highspot,Highspot
+lever,jamcity,Jam City
+lever,kabam,Kabam
 lever,kraken123,Kraken
+lever,mistral,Mistral AI
+lever,palantir,Palantir
+lever,plusgrade,Plusgrade
+lever,shopback-2,ShopBack
 lever,voleon,The Voleon Group
-ashby,openai,OpenAI
-ashby,ramp,Ramp
-ashby,linear,Linear
-ashby,deel,Deel
-ashby,modal,Modal
-ashby,replit,Replit
-ashby,supabase,Supabase
-ashby,perplexity-ai,Perplexity
-ashby,anysphere,Anysphere (Cursor)
-ashby,vanta,Vanta
-ashby,runway,Runway
-ashby,clickhouse,ClickHouse
+lever,voodoo,Voodoo
+lever,zoox,Zoox
+workable,abm-careers,ABM UK
+workable,avomind,Avomind
 workable,blueground,Blueground
+workable,blueprint-bryanjohnson,Blueprint
+workable,boldr-1,Boldr
+workable,cayman-first-insurance,Cayman First Insurance
+workable,cloudfactory,CloudFactory
+workable,control-risks-6,Control Risks
+workable,costello-medical,Costello Medical
+workable,cube-asia,Cube Asia
+workable,cxg,CXG
+workable,faulkner,The Faulkner Automotive Group
+workable,firsthelpfinancial,First Help Financial
+workable,hallson-hospitality,Hallson Hospitality
+workable,hello-rache,Hello Rache
+workable,high-end-hiring-3,High End Hiring
+workable,hire-resolve-the-top-recruitment-agency,Hire Resolve
+workable,hospitable,Hospitable
+workable,huggingface,Hugging Face
+workable,huzzle,Huzzle
+workable,interpath-advisory,Interpath Advisory
+workable,kleen-test-products,Kleen Test Products
+workable,laravel,Laravel
+workable,mclane-global,McLane Global
+workable,modash,Modash
+workable,mpsolutions,MP Solutions Ltd.
+workable,multimediallc,Multi Media LLC
 workable,netguru,Netguru
-workable,doximity,Doximity
-workable,tembo,Tembo
+workable,now-courier,NOW Courier
+workable,oceansxyz,Oceans
+workable,pairedrecruiting,Paired
+workable,paleovalley-wildpastures,Paleovalley
+workable,panelmatic-inc,Panelmatic Inc.
+workable,portless,Portless
+workable,powtoon,Powtoon
+workable,prime-robotics-1,Prime Robotics
+workable,quickhirestaffing,Quick Hire Staffing
+workable,rallye-motors,Rallye Motor Company
+workable,remote-recruitment,Remote Recruitment
+workable,remote-va,Remote VA
+workable,royal-electric,Royal Electric
+workable,sigmausjobs,SIGMA-US
+workable,storyteq,Storyteq
+workable,swiftx-express,SwiftX Inc.
+workable,swot-hospitality-management-company,SWOT Hospitality Management
+workable,teltonika,Teltonika
+workable,ten-group,Ten Group
+workable,thisway,ThisWay
+workable,treatwell,Treatwell
+workable,wealthbridge-financial-group,WealthBridge Financial Group
+workable,wearenoble,Noble
+workable,whitecollarshrm,Whitecollars
+workable,withplum,Plum Fintech
+workable,zendbox,Zendbox

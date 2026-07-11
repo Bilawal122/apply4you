@@ -38,9 +38,14 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
     .limit(200);
 
   if (minScore) query = query.gte("score", Number(minScore));
-  if (ats) query = query.eq("jobs.ats_type", ats);
+  if (ats && ["greenhouse", "lever", "ashby", "workable"].includes(ats)) query = query.eq("jobs.ats_type", ats);
   if (remote === "1") query = query.ilike("jobs.location", "%remote%");
-  if (q) query = query.or(`title.ilike.%${q}%,company.ilike.%${q}%`, { referencedTable: "jobs" });
+  if (q) {
+    // Strip characters significant to PostgREST filter syntax so user input
+    // can't break out of the ilike pattern and inject OR conditions.
+    const safe = q.replace(/[,()*\\%:"]/g, "").slice(0, 80).trim();
+    if (safe) query = query.or(`title.ilike.%${safe}%,company.ilike.%${safe}%`, { referencedTable: "jobs" });
+  }
 
   const [{ data: matchRows }, { data: appliedRows }, { data: profileRow }] = await Promise.all([
     query.overrideTypes<MatchRow[]>(),
