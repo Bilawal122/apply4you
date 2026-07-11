@@ -34,7 +34,9 @@ export async function updateSession(request: NextRequest) {
     isAuthRoute ||
     pathname === "/" ||
     pathname.startsWith("/auth") || // email-link landing + error page
-    pathname.startsWith("/forgot-password");
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/privacy") ||
+    pathname.startsWith("/terms");
   // /update-password is intentionally NOT public: the recovery link creates a
   // session, so only link-holders (or signed-in users) reach it.
 

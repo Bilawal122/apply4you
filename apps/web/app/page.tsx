@@ -98,9 +98,19 @@ export default function LandingPage() {
       </section>
 
       <footer className="border-t border-line bg-card py-4">
-        <p className="text-center font-mono text-[11px] text-ink-soft">
-          sources: Greenhouse · Lever · Ashby · Workable — no LinkedIn or Indeed credentials, ever
-        </p>
+        <div className="mx-auto flex max-w-5xl flex-col items-center gap-2 px-4">
+          <p className="text-center font-mono text-[11px] text-ink-soft">
+            sources: Greenhouse · Lever · Ashby · Workable — no LinkedIn or Indeed credentials, ever
+          </p>
+          <div className="flex gap-4 text-xs text-ink-soft">
+            <Link href="/privacy" className="underline hover:text-ink">
+              Privacy
+            </Link>
+            <Link href="/terms" className="underline hover:text-ink">
+              Terms
+            </Link>
+          </div>
+        </div>
       </footer>
     </main>
   );
