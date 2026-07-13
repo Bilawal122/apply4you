@@ -23,7 +23,14 @@ function redis(): Redis {
 
 function queue(name: string): Queue {
   globalThis.__queues ??= {};
-  globalThis.__queues[name] ??= new Queue(name, { connection: redis() });
+  // Drop completed/failed job records so a re-enqueue with the same deterministic
+  // jobId (e.g. re-resolving a reset draft, or re-approving after a failed submit)
+  // is not silently deduped against a lingering record. Concurrent double-adds are
+  // still deduped while a job is waiting/active; job history lives in Postgres.
+  globalThis.__queues[name] ??= new Queue(name, {
+    connection: redis(),
+    defaultJobOptions: { removeOnComplete: true, removeOnFail: true },
+  });
   return globalThis.__queues[name];
 }
 

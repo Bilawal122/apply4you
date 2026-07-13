@@ -1,3 +1,4 @@
+import { currentUsagePeriod } from "@apply4you/shared";
 import { createClient } from "@/lib/supabase/server";
 import { cardCls } from "@/components/ui";
 
@@ -35,8 +36,23 @@ export default async function DashboardPage() {
       .in("status", ["draft", "needs_review"]),
     supabase.from("job_matches").select("job_id", { count: "exact", head: true }),
     supabase.from("applications").select("id", { count: "exact", head: true }).eq("status", "failed"),
-    supabase.from("subscriptions").select("plan, applications_used, applications_limit, period_end").single(),
+    supabase.from("subscriptions").select("plan, applications_limit, period_start").single(),
   ]);
+
+  // Usage is submissions in the current rolling period (auto-resets) — matches
+  // the approval gate, not the never-resetting applications_used counter.
+  let planUsed = 0;
+  let planResets: string | null = null;
+  if (sub) {
+    const { start, end } = currentUsagePeriod(sub.period_start);
+    planResets = end.toLocaleDateString();
+    const { count } = await supabase
+      .from("applications")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "submitted")
+      .gte("submitted_at", start.toISOString());
+    planUsed = count ?? 0;
+  }
 
   return (
     <div>
@@ -50,8 +66,8 @@ export default async function DashboardPage() {
         {sub && (
           <Stat
             label={`Plan: ${sub.plan}`}
-            value={`${sub.applications_used} / ${sub.applications_limit}`}
-            hint={`resets ${new Date(sub.period_end).toLocaleDateString()}`}
+            value={`${planUsed} / ${sub.applications_limit}`}
+            hint={planResets ? `resets ${planResets}` : undefined}
           />
         )}
       </div>

@@ -1,7 +1,14 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { PLANS, type Field, type PlanId, type ResolvedValues, type UnresolvedField } from "@apply4you/shared";
+import {
+  PLANS,
+  currentUsagePeriod,
+  type Field,
+  type PlanId,
+  type ResolvedValues,
+  type UnresolvedField,
+} from "@apply4you/shared";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { enqueueSubmit } from "@/lib/queue";
@@ -62,7 +69,7 @@ async function checkLimits(
   const admin = createAdminClient();
   const [{ data: prefs }, { data: sub }, { count: todaySubmitted }, { count: inFlight }] = await Promise.all([
     admin.from("preferences").select("daily_cap").eq("user_id", userId).single(),
-    admin.from("subscriptions").select("plan, applications_used, applications_limit").eq("user_id", userId).single(),
+    admin.from("subscriptions").select("plan, applications_limit, period_start").eq("user_id", userId).single(),
     admin
       .from("applications")
       .select("id", { count: "exact", head: true })
@@ -82,7 +89,16 @@ async function checkLimits(
   let planRoom = Infinity;
   if (sub) {
     const limit = sub.applications_limit ?? PLANS[(sub.plan as PlanId) ?? "free"].applicationsLimit;
-    planRoom = Math.max(0, limit - sub.applications_used - (inFlight ?? 0));
+    // Usage = applications submitted in the current rolling period (auto-resets),
+    // plus approved/submitting in-flight so a burst of approvals can't exceed the cap.
+    const { start } = currentUsagePeriod(sub.period_start);
+    const { count: usedThisPeriod } = await admin
+      .from("applications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("status", "submitted")
+      .gte("submitted_at", start.toISOString());
+    planRoom = Math.max(0, limit - (usedThisPeriod ?? 0) - (inFlight ?? 0));
     if (planRoom === 0) return { allowed: 0, error: "Plan application limit reached" };
   }
 

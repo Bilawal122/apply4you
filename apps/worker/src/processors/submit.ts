@@ -6,6 +6,7 @@ import type { Page } from "playwright";
 import {
   submitQueueFor,
   PLANS,
+  currentUsagePeriod,
   type AtsType,
   type Field,
   type PlanId,
@@ -51,7 +52,7 @@ async function claimApplication(applicationId: string): Promise<
 
   const [{ data: prefs }, { data: sub }, { count: todayCount }] = await Promise.all([
     db.from("preferences").select("daily_cap").eq("user_id", app.user_id).single(),
-    db.from("subscriptions").select("plan, applications_used, applications_limit").eq("user_id", app.user_id).single(),
+    db.from("subscriptions").select("plan, applications_limit, period_start").eq("user_id", app.user_id).single(),
     db
       .from("applications")
       .select("id", { count: "exact", head: true })
@@ -64,7 +65,16 @@ async function claimApplication(applicationId: string): Promise<
 
   if (sub) {
     const planLimit = sub.applications_limit ?? PLANS[(sub.plan as PlanId) ?? "free"].applicationsLimit;
-    if (sub.applications_used >= planLimit) return { ok: false, reason: "plan limit reached" };
+    // Count submissions in the current rolling period (auto-resets) — same source
+    // of truth as the web approval gate, so the two never disagree.
+    const { start } = currentUsagePeriod(sub.period_start);
+    const { count: usedThisPeriod } = await db
+      .from("applications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", app.user_id)
+      .eq("status", "submitted")
+      .gte("submitted_at", start.toISOString());
+    if ((usedThisPeriod ?? 0) >= planLimit) return { ok: false, reason: "plan limit reached" };
   }
 
   // Conditional transition prevents double-pickup across workers.
