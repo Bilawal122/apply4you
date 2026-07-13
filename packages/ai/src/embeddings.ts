@@ -1,5 +1,5 @@
 import type { Profile, Preferences } from "@apply4you/shared";
-import { gemini, MODELS, EMBEDDING_DIMS, withRetry } from "./client.js";
+import { gemini, MODELS, EMBEDDING_DIMS, withRetry, logUsage } from "./client.js";
 
 async function embed(text: string, taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY"): Promise<number[]> {
   const response = await withRetry(() =>
@@ -9,6 +9,9 @@ async function embed(text: string, taskType: "RETRIEVAL_DOCUMENT" | "RETRIEVAL_Q
       config: { taskType, outputDimensionality: EMBEDDING_DIMS },
     }),
   );
+  // embedContent does not return usageMetadata — estimate input tokens from
+  // text length (~4 chars/token). Embedding pricing is input-only.
+  logUsage("embed", MODELS.embedding, { promptTokenCount: Math.ceil(text.length / 4) });
   const values = response.embeddings?.[0]?.values;
   if (!values || values.length !== EMBEDDING_DIMS) {
     throw new Error(`embedding failed: got ${values?.length ?? 0} dims`);

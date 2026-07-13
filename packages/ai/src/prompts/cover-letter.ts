@@ -1,5 +1,5 @@
 import { BANNED_PHRASES, type Profile } from "@apply4you/shared";
-import { gemini, MODELS, withRetry } from "../client.js";
+import { gemini, MODELS, withRetry, logUsage } from "../client.js";
 
 /**
  * FR-17/18: cover letter grounded in profile facts, tuned to the specific job.
@@ -58,6 +58,7 @@ export async function generateCoverLetter(input: CoverLetterInput): Promise<{ te
         config: { temperature: 0.5 },
       }),
     );
+    logUsage("cover-letter", MODELS.flash, response.usageMetadata);
     let text = (response.text ?? "").trim();
     if (input.maxLength && text.length > input.maxLength) text = text.slice(0, input.maxLength);
 

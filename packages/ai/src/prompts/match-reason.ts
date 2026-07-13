@@ -1,6 +1,6 @@
 import { Type, type Schema } from "@google/genai";
 import type { Profile } from "@apply4you/shared";
-import { gemini, MODELS, withRetry } from "../client.js";
+import { gemini, MODELS, withRetry, logUsage } from "../client.js";
 
 export interface MatchReasonInput {
   jobId: string;
@@ -54,6 +54,7 @@ ${JSON.stringify(jobs.map((j) => ({ jobId: j.jobId, title: j.title, company: j.c
       config: { responseMimeType: "application/json", responseSchema: RESPONSE_SCHEMA, temperature: 0.2 },
     }),
   );
+  logUsage("match-reason", MODELS.lite, response.usageMetadata);
 
   const parsed = JSON.parse(response.text ?? '{"reasons":[]}') as { reasons: Array<{ jobId: string; reason: string }> };
   return new Map(parsed.reasons.map((r) => [r.jobId, r.reason]));

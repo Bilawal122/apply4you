@@ -1,6 +1,6 @@
 import { Type, type Schema } from "@google/genai";
 import type { Field, Profile, ResolvedValues } from "@apply4you/shared";
-import { gemini, MODELS, withRetry } from "../client.js";
+import { gemini, MODELS, withRetry, logUsage } from "../client.js";
 
 /**
  * FR-13/14/15: one batched call per application resolving every field the
@@ -120,6 +120,7 @@ export async function resolveFieldsWithLlm(ctx: ResolutionContext, fields: Field
       },
     }),
   );
+  logUsage("field-resolution", MODELS.lite, response.usageMetadata);
 
   const parsed = JSON.parse(response.text ?? '{"answers":[]}') as {
     answers: Array<{ i: number; value: string | null }>;

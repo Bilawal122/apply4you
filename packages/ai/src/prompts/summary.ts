@@ -1,5 +1,5 @@
 import { BANNED_PHRASES, type Profile } from "@apply4you/shared";
-import { gemini, MODELS, withRetry } from "../client.js";
+import { gemini, MODELS, withRetry, logUsage } from "../client.js";
 
 /**
  * FR-4: derive the reusable Profile.summary once per profile.
@@ -25,5 +25,6 @@ ${JSON.stringify(profile, null, 2)}
       config: { temperature: 0.4 },
     }),
   );
+  logUsage("summary", MODELS.flash, response.usageMetadata);
   return (response.text ?? "").trim();
 }

@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { profileToRow, preferencesToRow } from "@/lib/profile";
 import { enqueueProfileEmbedding, enqueueResolve } from "@/lib/queue";
+import { ensureUsageSink } from "@/lib/ai-usage";
 
 export type SaveState = { error: string } | { ok: true } | null;
 
@@ -28,6 +29,7 @@ export async function saveProfile(_prev: SaveState, formData: FormData): Promise
   // FR-4: derive the reusable summary once — only when missing or explicitly refreshed.
   if (!profile.summary.trim()) {
     try {
+      ensureUsageSink();
       profile.summary = await deriveSummary(profile);
     } catch {
       // Summary derivation is best-effort; profile save must not fail on it.

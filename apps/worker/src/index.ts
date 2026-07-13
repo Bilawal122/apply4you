@@ -1,4 +1,5 @@
 import { registerAllAdapters } from "@apply4you/ats";
+import { registerUsageSink } from "./usage.js";
 import { connection } from "./queues.js";
 import { schedulePolling, startSourcingWorker } from "./processors/source-poll.js";
 import { startEmbeddingWorker, startProfileEmbeddingWorker } from "./processors/embed.js";
@@ -11,6 +12,7 @@ async function main(): Promise<void> {
   console.log(`[worker] redis connected (${pong})`);
 
   registerAllAdapters();
+  registerUsageSink();
 
   await schedulePolling();
   startSourcingWorker();

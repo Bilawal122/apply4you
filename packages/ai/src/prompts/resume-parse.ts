@@ -1,6 +1,6 @@
 import { Type, type Schema } from "@google/genai";
 import { ParsedResumeSchema, type ParsedResume } from "@apply4you/shared";
-import { gemini, MODELS, withRetry } from "../client.js";
+import { gemini, MODELS, withRetry, logUsage } from "../client.js";
 
 /**
  * FR-1: parse an uploaded resume into the Profile shape.
@@ -92,6 +92,7 @@ export async function parseResumePdf(pdfBytes: Uint8Array): Promise<ParsedResume
       },
     }),
   );
+  logUsage("resume-parse-pdf", MODELS.flash, response.usageMetadata);
   return validate(response.text ?? "{}");
 }
 
@@ -107,5 +108,6 @@ export async function parseResumeText(resumeText: string): Promise<ParsedResume>
       },
     }),
   );
+  logUsage("resume-parse-text", MODELS.flash, response.usageMetadata);
   return validate(response.text ?? "{}");
 }

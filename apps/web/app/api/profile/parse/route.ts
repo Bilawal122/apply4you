@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { parseResumePdf, parseResumeText } from "@apply4you/ai";
 import { createClient } from "@/lib/supabase/server";
+import { ensureUsageSink } from "@/lib/ai-usage";
 
 export const maxDuration = 60; // Gemini parse can take a while
 
@@ -12,6 +13,7 @@ const ACCEPTED = {
 const MAX_BYTES = 10 * 1024 * 1024;
 
 export async function POST(request: NextRequest) {
+  ensureUsageSink();
   const supabase = await createClient();
   const {
     data: { user },
