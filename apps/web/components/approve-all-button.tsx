@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { approveAllDrafts } from "@/app/(app)/applications/actions";
-import { btnPrimary } from "@/components/ui";
+import { Spinner, btnPrimary } from "@/components/ui";
 
 export function ApproveAllButton({ draftCount }: { draftCount: number }) {
   const [pending, startTransition] = useTransition();
@@ -23,7 +23,8 @@ export function ApproveAllButton({ draftCount }: { draftCount: number }) {
         }
         className={btnPrimary}
       >
-        {pending ? "Approving…" : `Approve all ${draftCount} ready`}
+        {pending && <Spinner />}
+        {pending ? `Approving ${draftCount}…` : `Approve all ${draftCount} ready`}
       </button>
       {message && <span className="text-sm text-ink-soft">{message}</span>}
     </div>

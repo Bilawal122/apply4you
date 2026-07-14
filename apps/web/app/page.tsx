@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
 
 function MockField({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
   return (
@@ -11,7 +12,14 @@ function MockField({ label, value, mono = true }: { label: string; value: string
   );
 }
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  // Session-aware: a signed-in visitor should be recognized, not shown a
+  // stranger's marketing page.
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getClaims();
+  const signedIn = Boolean(data?.claims);
+  const email = typeof data?.claims?.email === "string" ? data.claims.email : null;
+
   return (
     <main className="flex min-h-screen flex-col bg-paper">
       <header className="border-b border-line bg-card">
@@ -19,9 +27,21 @@ export default function LandingPage() {
           <span className="text-sm font-bold tracking-tight text-ink">
             Apply<span className="text-accent">4</span>You
           </span>
-          <Link href="/login" className="text-sm text-ink-soft hover:text-ink">
-            Sign in
-          </Link>
+          {signedIn ? (
+            <div className="flex items-center gap-3">
+              {email && <span className="hidden font-mono text-xs text-ink-soft sm:inline">{email}</span>}
+              <Link
+                href="/feed"
+                className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent/90"
+              >
+                Open your feed →
+              </Link>
+            </div>
+          ) : (
+            <Link href="/login" className="text-sm text-ink-soft hover:text-ink">
+              Sign in
+            </Link>
+          )}
         </div>
       </header>
 
@@ -38,18 +58,37 @@ export default function LandingPage() {
             experience — never invented — and submit the ones you approve. Up to 50 a day.
           </p>
           <div className="mt-8 flex items-center gap-3">
-            <Link
-              href="/signup"
-              className="rounded-md bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent/90"
-            >
-              Start free — 10 applications
-            </Link>
-            <Link
-              href="/login"
-              className="rounded-md border border-line bg-card px-5 py-2.5 text-sm font-medium text-ink hover:border-ink-soft"
-            >
-              Sign in
-            </Link>
+            {signedIn ? (
+              <>
+                <Link
+                  href="/feed"
+                  className="rounded-md bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent/90"
+                >
+                  Go to your job feed
+                </Link>
+                <Link
+                  href="/applications"
+                  className="rounded-md border border-line bg-card px-5 py-2.5 text-sm font-medium text-ink hover:border-ink-soft"
+                >
+                  Review applications
+                </Link>
+              </>
+            ) : (
+              <>
+                <Link
+                  href="/signup"
+                  className="rounded-md bg-accent px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent/90"
+                >
+                  Start free — 10 applications
+                </Link>
+                <Link
+                  href="/login"
+                  className="rounded-md border border-line bg-card px-5 py-2.5 text-sm font-medium text-ink hover:border-ink-soft"
+                >
+                  Sign in
+                </Link>
+              </>
+            )}
           </div>
           <ul className="mt-10 flex flex-col gap-2 text-sm text-ink-soft">
             <li className="flex items-baseline gap-2">

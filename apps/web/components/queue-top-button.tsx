@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { queueTopMatches } from "@/app/(app)/actions";
-import { btnPrimary } from "@/components/ui";
+import { Spinner, btnPrimary } from "@/components/ui";
 
 export function QueueTopButton({ available }: { available: number }) {
   const [pending, startTransition] = useTransition();
@@ -24,7 +24,8 @@ export function QueueTopButton({ available }: { available: number }) {
         }
         className={btnPrimary}
       >
-        {pending ? "Queuing…" : `Queue top ${n}`}
+        {pending && <Spinner />}
+        {pending ? `Queuing ${n}…` : `Queue top ${n}`}
       </button>
       {message && <span className="text-sm text-ink-soft">{message}</span>}
     </div>

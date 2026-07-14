@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { queueApplication } from "@/app/(app)/actions";
-import { btnSecondary } from "@/components/ui";
+import { Spinner, btnSecondary } from "@/components/ui";
 
 export function QueueButton({ jobId }: { jobId: string }) {
   const [pending, startTransition] = useTransition();
@@ -25,6 +25,7 @@ export function QueueButton({ jobId }: { jobId: string }) {
         }
         className={btnSecondary}
       >
+        {pending && <Spinner />}
         {pending ? "Queuing…" : "Queue"}
       </button>
       {result && result !== "queued" && <span className="max-w-40 text-right text-xs text-danger">{result}</span>}

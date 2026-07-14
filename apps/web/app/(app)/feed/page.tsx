@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { QueueButton } from "@/components/queue-button";
 import { QueueTopButton } from "@/components/queue-top-button";
 import { FeedFilters } from "@/components/feed-filters";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { ScoreBadge, cardCls } from "@/components/ui";
 
 interface MatchRow {
@@ -47,17 +49,31 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
     if (safe) query = query.or(`title.ilike.%${safe}%,company.ilike.%${safe}%`, { referencedTable: "jobs" });
   }
 
-  const [{ data: matchRows }, { data: appliedRows }, { data: profileRow }] = await Promise.all([
-    query.overrideTypes<MatchRow[]>(),
-    supabase.from("applications").select("job_id"),
-    supabase.from("profiles").select("embedding").single<{ embedding: unknown }>(),
-  ]);
+  const [{ data: matchRows }, { data: appliedRows }, { data: profileRow }, { count: totalMatches }] =
+    await Promise.all([
+      query.overrideTypes<MatchRow[]>(),
+      supabase.from("applications").select("job_id"),
+      supabase
+        .from("profiles")
+        .select("embedding, summary, resume_storage_path")
+        .single<{ embedding: unknown; summary: string | null; resume_storage_path: string | null }>(),
+      supabase.from("job_matches").select("job_id", { count: "exact", head: true }),
+    ]);
+
+  // Brand-new account with nothing set up yet -> guide them into the wizard
+  // instead of dropping them on an empty feed.
+  if (profileRow && !profileRow.resume_storage_path && !profileRow.summary?.trim()) {
+    redirect("/onboarding");
+  }
 
   const applied = new Set((appliedRows ?? []).map((r) => r.job_id as string));
   // `q` filters the embedded jobs to null rows on non-matches with !inner; drop those.
   const matches = (matchRows ?? []).filter((m) => m.jobs && !applied.has(m.jobs.id)).slice(0, 50);
-  const matchingPending = !profileRow?.embedding;
+  // Pending covers the embed AND the match write: the embedding lands seconds
+  // before job_matches rows do, and both states should read "in progress".
+  const matchingPending = !profileRow?.embedding || (totalMatches ?? 0) === 0;
   const filtered = Boolean(q || ats || minScore || remote);
+  const noResume = !profileRow?.resume_storage_path;
 
   return (
     <div>
@@ -72,15 +88,34 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
         <QueueTopButton available={matches.length} />
       </div>
 
+      {noResume && (
+        <div className="mb-4 rounded-md border border-attention/40 bg-attention-soft px-4 py-3 text-sm">
+          <span className="font-medium text-attention">No resume on file.</span>{" "}
+          <span className="text-ink-soft">
+            Applications can&apos;t be submitted without one —{" "}
+            <Link href="/onboarding" className="font-medium underline">
+              upload your resume
+            </Link>{" "}
+            to unlock submissions.
+          </span>
+        </div>
+      )}
+
       {!matchingPending && <FeedFilters />}
 
       {matchingPending ? (
         <div className={`${cardCls} p-8 text-center`}>
+          <AutoRefresh />
           <p className="font-mono text-sm text-accent">matching in progress…</p>
           <p className="mt-2 text-sm text-ink-soft">
             We&apos;re reading your profile against every open job. This takes about a minute after you
             save your <Link href="/profile" className="underline">profile</Link> and{" "}
-            <Link href="/preferences" className="underline">preferences</Link> — refresh shortly.
+            <Link href="/preferences" className="underline">preferences</Link> — this page refreshes
+            itself.
+          </p>
+          <p className="mt-2 text-xs text-ink-soft/70">
+            Still here after a few minutes? Your criteria may be too narrow — try widening your{" "}
+            <Link href="/preferences" className="underline">preferences</Link>.
           </p>
         </div>
       ) : matches.length === 0 ? (

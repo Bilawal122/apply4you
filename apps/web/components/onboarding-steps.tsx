@@ -1,11 +1,11 @@
-const STEPS = ["Upload resume", "Review profile", "Set preferences"];
+const STEPS = ["Upload resume", "Review profile", "Set preferences", "Meet your matches"];
 
 /** The onboarding really is a sequence — numbering carries information here. */
-export function OnboardingSteps({ current }: { current: 1 | 2 | 3 }) {
+export function OnboardingSteps({ current }: { current: 1 | 2 | 3 | 4 }) {
   return (
-    <ol className="mb-8 flex items-center justify-center gap-2">
+    <ol className="mb-8 flex flex-wrap items-center justify-center gap-2">
       {STEPS.map((label, i) => {
-        const step = (i + 1) as 1 | 2 | 3;
+        const step = (i + 1) as 1 | 2 | 3 | 4;
         const state = step < current ? "done" : step === current ? "active" : "todo";
         return (
           <li key={label} className="flex items-center gap-2">
@@ -23,7 +23,7 @@ export function OnboardingSteps({ current }: { current: 1 | 2 | 3 }) {
             <span className={`text-xs ${state === "active" ? "font-medium text-ink" : "text-ink-soft"}`}>
               {label}
             </span>
-            {step < 3 && <span className="h-px w-6 bg-line" />}
+            {step < STEPS.length && <span className="h-px w-6 bg-line" />}
           </li>
         );
       })}

@@ -84,8 +84,56 @@ export async function savePreferences(_prev: SaveState, formData: FormData): Pro
 
   revalidatePath("/preferences", "page");
 
-  if (formData.get("redirectTo") === "feed") redirect("/feed");
+  const redirectTo = formData.get("redirectTo");
+  if (redirectTo === "matches") redirect("/onboarding/matches");
+  if (redirectTo === "feed") redirect("/feed");
   return { ok: true };
+}
+
+/** Polled by the onboarding "finding your matches" step. */
+export async function getMatchingStatus(): Promise<{
+  embedded: boolean;
+  matches: number;
+  activeApps: number;
+}> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { embedded: false, matches: 0, activeApps: 0 };
+
+  const [{ data: profileRow }, { count: matches }, { count: activeApps }] = await Promise.all([
+    supabase.from("profiles").select("embedding").single<{ embedding: unknown }>(),
+    supabase.from("job_matches").select("job_id", { count: "exact", head: true }),
+    // In-flight applications only — NOT lifetime count. Skipped/submitted
+    // history must not make step 4 think it already queued this session.
+    supabase
+      .from("applications")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["draft", "needs_review", "approved", "submitting"]),
+  ]);
+
+  return {
+    embedded: Boolean(profileRow?.embedding),
+    matches: matches ?? 0,
+    activeApps: activeApps ?? 0,
+  };
+}
+
+/** Re-kick the embed -> match chain if the first enqueue was dropped or stalled. */
+export async function retryMatching(): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in" };
+
+  try {
+    await enqueueProfileEmbedding(user.id);
+    return {};
+  } catch {
+    return { error: "The matching queue is unreachable right now — try again in a minute." };
+  }
 }
 
 /** Feed "Queue top N": bulk-create drafts for the best unapplied matches. */

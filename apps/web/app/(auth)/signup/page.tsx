@@ -13,11 +13,14 @@ export default function SignupPage() {
       <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 px-4">
         <h1 className="text-2xl font-semibold text-ink">Check your email</h1>
         <p className="text-sm text-ink-soft">
-          We sent a confirmation link to your inbox. Click it, then{" "}
+          We sent a confirmation link to your inbox. Click it and you&apos;re in — it signs you in and
+          starts your setup: upload your resume, set your criteria, and we start finding jobs for you.
+        </p>
+        <p className="text-xs text-ink-soft">
+          Already confirmed?{" "}
           <Link href="/login" className="font-medium text-accent underline">
-            sign in
-          </Link>{" "}
-          to upload your resume.
+            Sign in
+          </Link>
         </p>
       </main>
     );

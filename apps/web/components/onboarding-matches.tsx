@@ -1,0 +1,186 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { getMatchingStatus, queueTopMatches, retryMatching } from "@/app/(app)/actions";
+import { Spinner, btnPrimary, cardCls } from "@/components/ui";
+
+const POLL_MS = 2500;
+const STALL_AFTER_MS = 75_000;
+const AUTO_QUEUE_MAX = 10;
+
+type Phase = "searching" | "queuing" | "done" | "stalled";
+
+/**
+ * Onboarding step 4. Polls the match pipeline (profile embed -> match-user in
+ * the worker, normally 5-20s), then queues the top matches as review-gated
+ * drafts automatically — the "we started applying for you" moment. Nothing is
+ * ever submitted without the user's approval.
+ */
+export function OnboardingMatches() {
+  const [phase, setPhase] = useState<Phase>("searching");
+  const [embedded, setEmbedded] = useState(false);
+  const [matches, setMatches] = useState(0);
+  const [queuedCount, setQueuedCount] = useState(0);
+  // True when we found applications already in flight instead of queuing new
+  // ones (re-onboarding, or the user queued from the feed mid-wizard).
+  const [alreadyActive, setAlreadyActive] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [runId, setRunId] = useState(0);
+  const queueStarted = useRef(false);
+  const startedAt = useRef(Date.now());
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function tick() {
+      if (cancelled) return;
+
+      let status: { embedded: boolean; matches: number; activeApps: number } | null = null;
+      try {
+        status = await getMatchingStatus();
+      } catch {
+        status = null; // transient transport failure — fall through to the stall check
+      }
+      if (cancelled) return;
+
+      if (status) {
+        setEmbedded(status.embedded);
+        setMatches(status.matches);
+
+        if (status.matches > 0 && !queueStarted.current) {
+          queueStarted.current = true;
+
+          if (status.activeApps > 0) {
+            // Something is already in the review pipeline — don't pile on.
+            setQueuedCount(status.activeApps);
+            setAlreadyActive(true);
+            setPhase("done");
+            return;
+          }
+
+          setPhase("queuing");
+          try {
+            const res = await queueTopMatches(Math.min(AUTO_QUEUE_MAX, status.matches));
+            if (cancelled) return;
+            if (res.error && !res.queued) setError(res.error);
+            setQueuedCount(res.queued ?? 0);
+            setPhase("done");
+          } catch {
+            if (cancelled) return;
+            // The action may or may not have landed server-side — let a retry
+            // re-check instead of wedging in "queuing" forever.
+            queueStarted.current = false;
+            setError("Queuing hiccupped — your matches are safe. Retry, or queue from your feed.");
+            setPhase("stalled");
+          }
+          return;
+        }
+      }
+
+      // Stall check runs whether or not the poll itself succeeded.
+      if (Date.now() - startedAt.current > STALL_AFTER_MS) {
+        setPhase("stalled");
+        return;
+      }
+      if (!cancelled) setTimeout(tick, POLL_MS);
+    }
+
+    void tick();
+    return () => {
+      cancelled = true;
+    };
+  }, [runId]);
+
+  const retry = async () => {
+    setError(null);
+    const res = await retryMatching();
+    if (res.error) {
+      setError(res.error);
+      return;
+    }
+    startedAt.current = Date.now();
+    queueStarted.current = false;
+    setPhase("searching");
+    setRunId((r) => r + 1); // restart the poll loop
+  };
+
+  if (phase === "done") {
+    return (
+      <div className={`${cardCls} px-6 py-10 text-center`}>
+        <p className="font-mono text-3xl font-semibold tabular-nums text-accent">{matches}</p>
+        <p className="mt-1 text-sm font-medium text-ink">jobs match your criteria</p>
+        {alreadyActive ? (
+          <p className="mt-3 text-sm text-ink-soft">
+            You already have {queuedCount} application{queuedCount === 1 ? "" : "s"} in your review
+            queue — review those first, then queue more from your feed.
+          </p>
+        ) : queuedCount > 0 ? (
+          <p className="mt-3 text-sm text-ink-soft">
+            We queued the top {queuedCount} and the AI is filling them out from your profile right now.
+            Review each one — nothing is submitted without your approval.
+          </p>
+        ) : (
+          <p className="mt-3 text-sm text-ink-soft">
+            {error ?? "Head to your feed to queue the ones you like."}
+          </p>
+        )}
+        <div className="mt-6 flex items-center justify-center gap-3">
+          {queuedCount > 0 ? (
+            <>
+              <Link href="/applications" className={btnPrimary}>
+                Watch them fill →
+              </Link>
+              <Link href="/feed" className="text-sm text-ink-soft underline hover:text-ink">
+                or browse the full feed
+              </Link>
+            </>
+          ) : (
+            <Link href="/feed" className={btnPrimary}>
+              See your matches →
+            </Link>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (phase === "stalled") {
+    return (
+      <div className={`${cardCls} px-6 py-10 text-center`}>
+        <p className="text-sm font-medium text-ink">This is taking longer than usual</p>
+        <p className="mt-2 text-sm text-ink-soft">
+          Matching normally finishes in under a minute. The engine may be busy — you can kick it
+          again or check your feed later; matching keeps running in the background.
+        </p>
+        {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+        <div className="mt-6 flex items-center justify-center gap-3">
+          <button type="button" onClick={() => void retry()} className={btnPrimary}>
+            Retry
+          </button>
+          <Link href="/feed" className="text-sm text-ink-soft underline hover:text-ink">
+            Go to my feed
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${cardCls} px-6 py-10 text-center`}>
+      <p className="flex items-center justify-center gap-2 font-mono text-sm text-accent">
+        <Spinner />
+        {phase === "queuing"
+          ? "queuing your first applications…"
+          : !embedded
+            ? "reading your profile…"
+            : "scoring every open job against your criteria…"}
+      </p>
+      <p className="mt-3 text-sm text-ink-soft">
+        {phase === "queuing"
+          ? `${matches} matches found — picking the best ${Math.min(AUTO_QUEUE_MAX, matches)} to start with.`
+          : "We match on your titles, locations, salary floor and skills. Usually under a minute."}
+      </p>
+    </div>
+  );
+}

@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { signOut } from "../(auth)/actions";
 import { NavLinks } from "@/components/nav-links";
+import { SignOutButton } from "@/components/sign-out-button";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
   if (!data?.claims) redirect("/login");
+  const email = typeof data.claims.email === "string" ? data.claims.email : null;
 
   return (
     <div className="min-h-screen bg-paper">
@@ -19,11 +20,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </Link>
             <NavLinks />
           </div>
-          <form action={signOut}>
-            <button type="submit" className="text-sm text-ink-soft transition-colors hover:text-ink">
-              Sign out
-            </button>
-          </form>
+          <div className="flex items-center gap-3">
+            {email && (
+              <span className="hidden font-mono text-xs text-ink-soft sm:inline" title="Signed in as">
+                {email}
+              </span>
+            )}
+            <SignOutButton />
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>

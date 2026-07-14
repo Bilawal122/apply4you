@@ -1,26 +1,46 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { inputCls } from "@/components/ui";
+import { Spinner, inputCls } from "@/components/ui";
 
 const ATS = ["greenhouse", "lever", "ashby", "workable"];
+const SEARCH_DEBOUNCE_MS = 300;
 
 /** Server-applied feed filters, driven through the URL so they survive refresh. */
 export function FeedFilters() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
+  const [isPending, startTransition] = useTransition();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setParam = useCallback(
     (key: string, value: string) => {
       const next = new URLSearchParams(params.toString());
       if (value) next.set(key, value);
       else next.delete(key);
-      router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+      startTransition(() => {
+        router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+      });
     },
     [params, pathname, router],
   );
+
+  // Search shouldn't fire a server round-trip per keystroke.
+  const setSearch = useCallback(
+    (value: string) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => setParam("q", value), SEARCH_DEBOUNCE_MS);
+    },
+    [setParam],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
   const q = params.get("q") ?? "";
   const ats = params.get("ats") ?? "";
@@ -34,7 +54,7 @@ export function FeedFilters() {
         className={`${inputCls} max-w-56`}
         placeholder="Search title or company"
         defaultValue={q}
-        onChange={(e) => setParam("q", e.target.value.trim())}
+        onChange={(e) => setSearch(e.target.value.trim())}
       />
       <select className={`${inputCls} max-w-40`} value={ats} onChange={(e) => setParam("ats", e.target.value)}>
         <option value="">All sources</option>
@@ -61,11 +81,17 @@ export function FeedFilters() {
       {hasFilters && (
         <button
           type="button"
-          onClick={() => router.replace(pathname, { scroll: false })}
-          className="text-sm text-ink-soft underline hover:text-ink"
+          onClick={() => startTransition(() => router.replace(pathname, { scroll: false }))}
+          className="text-sm text-ink-soft underline transition-colors hover:text-ink"
         >
           Clear
         </button>
+      )}
+      {isPending && (
+        <span className="flex items-center gap-1.5 font-mono text-xs text-ink-soft">
+          <Spinner />
+          updating…
+        </span>
       )}
     </div>
   );

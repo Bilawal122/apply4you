@@ -23,7 +23,7 @@ export default async function PreferencesPage({
       <p className="mb-6 mt-1 text-sm text-ink-soft">
         What should we look for? Jobs are matched and ranked against these.
       </p>
-      <PreferencesForm initial={rowToPreferences(row)} redirectTo={onboarding ? "feed" : undefined} />
+      <PreferencesForm initial={rowToPreferences(row)} redirectTo={onboarding ? "matches" : undefined} />
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import type { Field, ResolvedValues, UnresolvedField } from "@apply4you/shared";
 import { approveApplication, saveApplicationFields, skipApplication } from "@/app/(app)/applications/actions";
-import { btnPrimary, btnSecondary, inputCls } from "@/components/ui";
+import { Spinner, btnGhost, btnPrimary, btnSecondary, inputCls } from "@/components/ui";
 
 export interface ReviewApp {
   id: string;
@@ -31,6 +31,9 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // Which button was clicked — so the pressed one shows its own spinner/label
+  // while all three stay disabled.
+  const [acting, setActing] = useState<"approve" | "save" | "skip" | null>(null);
 
   // resume_text (paste-resume textarea) and EEOC blocks are never filled by
   // the machine — hide them from review too.
@@ -47,14 +50,18 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
   const payload = (): ResolvedValues =>
     clField ? { ...values, [clField.id]: coverLetter || null } : values;
 
-  const save = () =>
+  const save = () => {
+    setActing("save");
     startTransition(async () => {
       const res = await saveApplicationFields(app.id, payload(), coverLetter || null);
       setMessage(res.error ?? "Saved");
       if (!res.error) setDirty(false);
+      setActing(null);
     });
+  };
 
-  const approve = () =>
+  const approve = () => {
+    setActing("approve");
     startTransition(async () => {
       const res = dirty
         ? await saveApplicationFields(app.id, payload(), coverLetter || null).then((r) =>
@@ -62,20 +69,25 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
           )
         : await approveApplication(app.id);
       setMessage(res.error ?? "Approved — submitting soon");
+      setActing(null);
     });
+  };
 
-  const skip = () =>
+  const skip = () => {
+    setActing("skip");
     startTransition(async () => {
       const res = await skipApplication(app.id);
       setMessage(res.error ?? "Skipped");
+      setActing(null);
     });
+  };
 
   return (
     <div className="rounded-lg border border-line bg-card">
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+        className="flex w-full items-center justify-between gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-paper/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
       >
         <div className="min-w-0">
           <span className="text-sm font-semibold text-ink">{app.jobTitle}</span>
@@ -178,18 +190,16 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
               className={btnPrimary}
               title={app.status === "needs_review" ? "Fill the required answers and save first" : undefined}
             >
-              Approve &amp; submit
+              {acting === "approve" && <Spinner />}
+              {acting === "approve" ? "Approving…" : "Approve & submit"}
             </button>
             <button type="button" onClick={save} disabled={pending || !dirty} className={btnSecondary}>
-              Save edits
+              {acting === "save" && <Spinner />}
+              {acting === "save" ? "Saving…" : "Save edits"}
             </button>
-            <button
-              type="button"
-              onClick={skip}
-              disabled={pending}
-              className="rounded-md px-3 py-2 text-sm text-ink-soft transition-colors hover:text-danger"
-            >
-              Skip
+            <button type="button" onClick={skip} disabled={pending} className={`${btnGhost} hover:text-danger`}>
+              {acting === "skip" && <Spinner />}
+              {acting === "skip" ? "Skipping…" : "Skip"}
             </button>
             {message && <span className="text-xs text-ink-soft">{message}</span>}
           </div>

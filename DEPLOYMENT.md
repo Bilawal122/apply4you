@@ -48,6 +48,11 @@ that must differ between local and prod.
 in a prior session — verify it's still there so signup-confirmation and
 password-reset links resolve to prod.)
 
+**Local dev signups:** signup/reset emails redirect to `APP_URL`, and Supabase
+silently falls back to the prod Site URL for any origin not on the allowlist —
+so to test the signup → onboarding flow locally, also add
+`http://localhost:3000/**` to the redirect allowlist.
+
 ---
 
 ## Worker → Railway (the missing piece)

@@ -22,7 +22,14 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
   if (password.length < 8) return { error: "Password must be at least 8 characters." };
 
   const supabase = await createClient();
-  const { data, error } = await supabase.auth.signUp({ email, password });
+  const appUrl = process.env.APP_URL ?? "http://localhost:3000";
+  // The confirmation link must land new users in the onboarding wizard, not
+  // the (empty) feed — this is where "ask me everything" starts.
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { emailRedirectTo: `${appUrl}/auth/confirm?next=/onboarding` },
+  });
   if (error) return { error: error.message };
 
   // Email confirmation on: no session yet — tell the user to check their inbox

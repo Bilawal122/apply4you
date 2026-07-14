@@ -1,13 +1,28 @@
 /* Shared UI atoms. Machine output (scores, statuses, values) is always mono. */
 
 export const btnPrimary =
-  "inline-flex items-center justify-center rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent/90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-40 disabled:pointer-events-none";
+  "inline-flex items-center justify-center gap-2 rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-all duration-100 hover:bg-accent/90 active:scale-[0.98] active:bg-accent/80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-40 disabled:pointer-events-none";
 
 export const btnSecondary =
-  "inline-flex items-center justify-center rounded-md border border-line bg-card px-4 py-2 text-sm font-medium text-ink transition-colors hover:border-ink-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-40 disabled:pointer-events-none";
+  "inline-flex items-center justify-center gap-2 rounded-md border border-line bg-card px-4 py-2 text-sm font-medium text-ink transition-all duration-100 hover:border-ink-soft active:scale-[0.98] active:bg-paper focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-40 disabled:pointer-events-none";
 
 export const btnGhost =
-  "inline-flex items-center justify-center rounded-md px-3 py-2 text-sm font-medium text-ink-soft transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-40";
+  "inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium text-ink-soft transition-all duration-100 hover:text-ink active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-40 disabled:pointer-events-none";
+
+/** Inline pending indicator for buttons — sized to the text line. */
+export function Spinner({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      className={`h-3.5 w-3.5 shrink-0 animate-spin ${className}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+    >
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+    </svg>
+  );
+}
 
 export const inputCls =
   "w-full rounded-md border border-line bg-card px-3 py-2 text-sm text-ink placeholder:text-ink-soft/60 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20";

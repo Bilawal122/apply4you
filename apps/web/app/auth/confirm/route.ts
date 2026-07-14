@@ -5,8 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 const OTP_TYPES: EmailOtpType[] = ["signup", "invite", "magiclink", "recovery", "email_change", "email"];
 
 /** Only same-origin relative paths — never redirect off-site from an auth link. */
-function safeNext(next: string | null): string {
-  if (!next || !next.startsWith("/") || next.startsWith("//")) return "/feed";
+function safeNext(next: string | null, fallback = "/feed"): string {
+  if (!next || !next.startsWith("/") || next.startsWith("//")) return fallback;
   return next;
 }
 
@@ -21,7 +21,8 @@ export async function GET(request: NextRequest) {
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type") as EmailOtpType | null;
   const code = searchParams.get("code");
-  const next = safeNext(searchParams.get("next"));
+  // Fresh signups start onboarding; everything else defaults to the feed.
+  const next = safeNext(searchParams.get("next"), type === "signup" ? "/onboarding" : "/feed");
 
   const redirectTo = request.nextUrl.clone();
   redirectTo.search = "";

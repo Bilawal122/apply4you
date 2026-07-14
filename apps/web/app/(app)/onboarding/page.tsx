@@ -1,9 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Profile, ParsedResume } from "@apply4you/shared";
 import { ProfileForm } from "@/components/profile-form";
 import { OnboardingSteps } from "@/components/onboarding-steps";
+import { Spinner } from "@/components/ui";
+
+const PARSE_STAGES = [
+  "reading your resume…",
+  "extracting your work history…",
+  "pulling out your skills…",
+  "almost done…",
+];
 
 const EMPTY_PROFILE: Profile = {
   firstName: "",
@@ -34,6 +42,17 @@ export default function OnboardingPage() {
   const [phase, setPhase] = useState<"upload" | "parsing" | "review">("upload");
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [stage, setStage] = useState(0);
+
+  // Staged copy keeps the 10-20s parse from feeling frozen.
+  useEffect(() => {
+    if (phase !== "parsing") {
+      setStage(0);
+      return;
+    }
+    const t = setInterval(() => setStage((s) => Math.min(s + 1, PARSE_STAGES.length - 1)), 5000);
+    return () => clearInterval(t);
+  }, [phase]);
 
   async function handleUpload(file: File) {
     setPhase("parsing");
@@ -76,15 +95,18 @@ export default function OnboardingPage() {
 
       {phase === "parsing" ? (
         <div className="w-full rounded-lg border border-dashed border-accent/40 bg-accent-soft px-6 py-12 text-center">
-          <p className="font-mono text-sm text-accent">reading your resume…</p>
-          <p className="mt-1 text-xs text-ink-soft">usually 10–20 seconds</p>
+          <p className="flex items-center justify-center gap-2 font-mono text-sm text-accent">
+            <Spinner />
+            {PARSE_STAGES[stage]}
+          </p>
+          <p className="mt-2 text-xs text-ink-soft">usually 10–20 seconds</p>
         </div>
       ) : (
-        <label className="w-full cursor-pointer rounded-lg border border-dashed border-line bg-card px-6 py-12 text-center text-sm text-ink-soft transition-colors hover:border-accent hover:text-ink">
+        <label className="w-full cursor-pointer rounded-lg border border-dashed border-line bg-card px-6 py-12 text-center text-sm text-ink-soft transition-colors hover:border-accent hover:text-ink focus-within:border-accent focus-within:text-ink">
           <input
             type="file"
             accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            className="hidden"
+            className="sr-only"
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) void handleUpload(file);
