@@ -35,18 +35,16 @@ function parseMultipart(body: Buffer, contentType: string): PostedForm {
     const headerEnd = part.indexOf("\r\n\r\n");
     if (headerEnd === -1) continue;
     const headers = part.slice(0, headerEnd);
-    const nameMatch = headers.match(/name="([^"]+)"/);
-    if (!nameMatch) continue;
-    const name = nameMatch[1];
+    const name = headers.match(/name="([^"]+)"/)?.[1];
+    if (!name) continue;
     const value = part.slice(headerEnd + 4).replace(/\r\n$/, "");
-    const fileMatch = headers.match(/filename="([^"]*)"/);
-    if (fileMatch) {
-      out.files[name] = { filename: fileMatch[1], size: Buffer.byteLength(value, "binary") };
-    } else if (name in out.fields) {
-      const existing = out.fields[name];
-      out.fields[name] = Array.isArray(existing) ? [...existing, value] : [existing, value];
+    const filename = headers.match(/filename="([^"]*)"/)?.[1];
+    if (filename !== undefined) {
+      out.files[name] = { filename, size: Buffer.byteLength(value, "binary") };
     } else {
-      out.fields[name] = value;
+      const existing = out.fields[name];
+      if (existing === undefined) out.fields[name] = value;
+      else out.fields[name] = Array.isArray(existing) ? [...existing, value] : [existing, value];
     }
   }
   return out;

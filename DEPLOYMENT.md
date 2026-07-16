@@ -55,7 +55,23 @@ so to test the signup → onboarding flow locally, also add
 
 ---
 
-## Worker → Railway (the missing piece)
+## Worker → Railway
+
+> **STATUS 2026-07-16: deliberately STOPPED.** An idle 24/7 BullMQ worker burns
+> Upstash pay-per-command Redis (~$3/day for nothing — 9 queues × blocking
+> polls). The active deployment was removed and **auto-deploy is disabled**, so
+> git pushes will NOT restart it. To bring it back: Railway → striking-creation
+> → @apply4you/worker → Deployments → Redeploy (or re-enable auto-deploy in
+> Settings → Source).
+>
+> **Before running 24/7 again, kill the idle burn — pick one:**
+> 1. **Move Redis to Railway** (recommended): add a Redis service in the same
+>    Railway project (flat resource pricing, no per-command billing), point
+>    `REDIS_URL` on both the worker (Railway var) and the web app (Vercel var)
+>    at it, and delete the Upstash DB. Idle polling then costs ~nothing.
+> 2. Or run the worker on a schedule (Railway cron: boot every 2h, drain
+>    queues, exit) — cheaper, but queued applications wait up to 2h instead of
+>    seconds.
 
 New Railway project from the GitHub repo. Railway reads `railway.json` at the repo
 root and builds `apps/worker/Dockerfile` (repo root is the build context; the
