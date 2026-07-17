@@ -1,3 +1,4 @@
+import type { Worker } from "bullmq";
 import { registerAllAdapters } from "@apply4you/ats";
 import { registerUsageSink } from "./usage.js";
 import { connection } from "./queues.js";
@@ -7,6 +8,21 @@ import { scheduleNightlyMatching, startMatchingWorker } from "./processors/match
 import { startResolveWorker } from "./processors/resolve.js";
 import { startSubmitWorkers } from "./processors/submit.js";
 
+/**
+ * Job failures are otherwise invisible (BullMQ retains them silently) — the
+ * match_jobs statement-timeout regression went unnoticed for days this way.
+ */
+function logFailures(...workers: Worker[]): void {
+  for (const worker of workers) {
+    worker.on("failed", (job, err) => {
+      console.error(`[${worker.name}] job ${job?.id ?? "?"} (${job?.name ?? "?"}) FAILED: ${String(err?.message ?? err).slice(0, 300)}`);
+    });
+    worker.on("error", (err) => {
+      console.error(`[${worker.name}] worker error: ${String(err?.message ?? err).slice(0, 300)}`);
+    });
+  }
+}
+
 async function main(): Promise<void> {
   const pong = await connection.ping();
   console.log(`[worker] redis connected (${pong})`);
@@ -15,20 +31,22 @@ async function main(): Promise<void> {
   registerUsageSink();
 
   await schedulePolling();
-  startSourcingWorker();
+  const sourcing = startSourcingWorker();
   console.log("[worker] sourcing worker started (poll-all every 2h)");
 
   await scheduleNightlyMatching();
-  startEmbeddingWorker();
-  startProfileEmbeddingWorker();
-  startMatchingWorker();
+  const embedding = startEmbeddingWorker();
+  const profileEmbedding = startProfileEmbeddingWorker();
+  const matching = startMatchingWorker();
   console.log("[worker] embedding + matching workers started");
 
-  startResolveWorker();
+  const resolve = startResolveWorker();
   console.log("[worker] resolve worker started");
 
-  startSubmitWorkers();
+  const submits = startSubmitWorkers();
   console.log("[worker] submit workers started (per-ATS queues)");
+
+  logFailures(sourcing, embedding, profileEmbedding, matching, resolve, ...submits);
 
   setInterval(() => {
     console.log(`[worker] heartbeat ${new Date().toISOString()}`);
