@@ -39,7 +39,7 @@ export default async function ApplicationsPage() {
       .select(
         "id, status, form_schema, resolved_fields, cover_letter, unresolved_fields, created_at, submitted_at, failure_reason, jobs!inner(title, company, apply_url)",
       )
-      .in("status", ["approved", "submitting", "submitted", "failed", "skipped"])
+      .in("status", ["approved", "submitting", "submitted", "failed", "skipped", "needs_manual_verification"])
       .order("created_at", { ascending: false })
       .limit(25)
       .overrideTypes<AppRow[]>(),

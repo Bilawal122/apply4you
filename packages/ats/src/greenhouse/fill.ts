@@ -37,6 +37,9 @@ export async function fillGreenhouseForm(
       continue;
     }
 
+    // Demographic values reach here only if the APPLICANT typed them in
+    // review (resolution never generates them — DECISIONS.md D3); a value the
+    // user chose to give is theirs to deliver, so fill does not re-filter.
     const value = values[field.id];
     if (value == null || value === "") continue;
 

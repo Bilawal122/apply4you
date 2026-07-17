@@ -44,11 +44,39 @@ async function claimApplication(applicationId: string): Promise<
 
   const { data: app } = await db
     .from("applications")
-    .select("id, user_id, job_id, status")
+    .select("id, user_id, job_id, status, jobs!inner(ats_type, company)")
     .eq("id", applicationId)
     .single();
   if (!app) return { ok: false, reason: "not found" };
   if (app.status !== "approved") return { ok: false, reason: `status is ${app.status}` };
+  const jobMeta = app.jobs as unknown as { ats_type: string; company: string };
+
+  // Circuit breaker (DECISIONS.md D3): a tripped ATS holds its queue. The
+  // application stays `approved`; re-arm (paused=false) and re-enqueue to resume.
+  const { data: health } = await db
+    .from("ats_health")
+    .select("paused")
+    .eq("ats_type", jobMeta.ats_type)
+    .single();
+  if (health?.paused) {
+    await logEvent(applicationId, app.user_id, "approved", `Held — ${jobMeta.ats_type} submissions are paused (circuit breaker)`);
+    return { ok: false, reason: `${jobMeta.ats_type} paused by circuit breaker` };
+  }
+
+  // Blocklist backstop (DECISIONS.md D3): companies the user applied to
+  // manually (or never wants touched) must never receive an automated submit,
+  // even if a draft was queued before the company was listed.
+  const { data: prefsRow } = await db
+    .from("preferences")
+    .select("excluded_companies")
+    .eq("user_id", app.user_id)
+    .single();
+  const excluded = (prefsRow?.excluded_companies ?? []) as string[];
+  if (excluded.some((c) => c.trim().toLowerCase() === jobMeta.company.trim().toLowerCase())) {
+    await db.from("applications").update({ status: "skipped" }).eq("id", applicationId).eq("status", "approved");
+    await logEvent(applicationId, app.user_id, "skipped", `Blocked — ${jobMeta.company} is on your do-not-apply list`);
+    return { ok: false, reason: `company blocklisted: ${jobMeta.company}` };
+  }
 
   const [{ data: prefs }, { data: sub }, { count: todayCount }] = await Promise.all([
     db.from("preferences").select("daily_cap").eq("user_id", app.user_id).single(),
@@ -99,6 +127,73 @@ async function saveFailureScreenshot(page: Page, applicationId: string): Promise
     // best-effort
   }
 }
+
+/** Proof of what the ATS showed after a successful submit (DECISIONS.md D3). */
+async function saveConfirmationScreenshot(page: Page, applicationId: string): Promise<void> {
+  try {
+    const shot = await page.screenshot({ fullPage: false });
+    await supabaseAdmin()
+      .storage.from("artifacts")
+      .upload(`confirmations/${applicationId}.png`, shot, { contentType: "image/png", upsert: true });
+  } catch {
+    // best-effort
+  }
+}
+
+const CIRCUIT_BREAKER_THRESHOLD = 3;
+
+/**
+ * Circuit breaker bookkeeping (DECISIONS.md D3): consecutive submission
+ * failures trip the breaker for that ATS; a success resets it. Captcha rate is
+ * the leading indicator of bot detection — pausing early protects every
+ * user's account standing with that ATS.
+ */
+async function recordAtsOutcome(atsType: AtsType, ok: boolean, reason?: string): Promise<void> {
+  const db = supabaseAdmin();
+  const { data: health } = await db
+    .from("ats_health")
+    .select("consecutive_failures, paused")
+    .eq("ats_type", atsType)
+    .single();
+  if (!health) return;
+
+  if (ok) {
+    if (health.consecutive_failures > 0 || health.paused) {
+      await db
+        .from("ats_health")
+        .update({ consecutive_failures: 0, last_failure_reason: null, updated_at: new Date().toISOString() })
+        .eq("ats_type", atsType);
+    }
+    return;
+  }
+
+  const failures = health.consecutive_failures + 1;
+  const paused = failures >= CIRCUIT_BREAKER_THRESHOLD;
+  await db
+    .from("ats_health")
+    .update({
+      consecutive_failures: failures,
+      paused: health.paused || paused,
+      last_failure_reason: reason ?? "unknown",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("ats_type", atsType);
+  if (paused && !health.paused) {
+    console.error(
+      `[submit] CIRCUIT BREAKER TRIPPED for ${atsType} after ${failures} consecutive failures (${reason}) — submissions paused until ats_health.paused is manually reset`,
+    );
+  }
+}
+
+/**
+ * Text signatures of a CLOSED-posting page. Deliberately narrow — phrases like
+ * "until the position has been filled" or "no longer accepting agency
+ * submissions" appear inside live job descriptions, so a match only counts
+ * when the page ALSO has no application form (no submit control). A false
+ * closed_at self-heals on the next 2h poll (open jobs upsert closed_at=null).
+ */
+const CLOSED_POSTING_PATTERN =
+  /(this (job|posting|position|role) (is no longer|has been) (open|available|closed|removed|filled)|job (posting )?(is )?(closed|not found|expired)|no longer accepting applications|position is no longer available)/i;
 
 async function submitApplication(applicationId: string): Promise<void> {
   const db = supabaseAdmin();
@@ -173,11 +268,27 @@ async function submitApplication(applicationId: string): Promise<void> {
 
   await logEvent(applicationId, app.user_id, "submitting", "Opening the application form");
 
+  // Human-ish pacing (DECISIONS.md D3): never fire the instant the queue hands
+  // us a job — 10-45s of jitter on top of the per-ATS rate limiter.
+  await new Promise((r) => setTimeout(r, 10_000 + Math.random() * 35_000));
+
   try {
     const result: SubmitResult = await withBrowserContext(async (context) => {
       const page = await context.newPage();
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45_000 });
       await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
+
+      // Staleness guard (DECISIONS.md D3): the posting may have closed between
+      // queueing and submission — fail gracefully, never fill a dead form.
+      // Closed text alone is not enough (live JDs contain similar phrases);
+      // a truly closed page also has no application form to submit.
+      const bodyText = await page.locator("body").innerText({ timeout: 5000 }).catch(() => "");
+      const hasSubmitControl =
+        (await page.locator('button[type="submit"], input[type="submit"]').count()) > 0;
+      if (CLOSED_POSTING_PATTERN.test(bodyText.slice(0, 3000)) && !hasSubmitControl) {
+        await supabaseAdmin().from("jobs").update({ closed_at: new Date().toISOString() }).eq("id", claim.jobId);
+        return { outcome: "failed", reason: "posting_closed", detail: "posting closed before submission" } satisfies SubmitResult;
+      }
 
       const preBlock = await adapter.detectBlock(page);
       if (preBlock) {
@@ -197,6 +308,8 @@ async function submitApplication(applicationId: string): Promise<void> {
       // timeout may still have submitted; the adapter re-checks confirmation).
       const submitResult = await adapter.submit(page);
       if (submitResult.outcome === "failed") await saveFailureScreenshot(page, applicationId);
+      // Proof of success: capture what the ATS showed (DECISIONS.md D3).
+      if (submitResult.outcome === "submitted") await saveConfirmationScreenshot(page, applicationId);
       return submitResult;
     });
 
@@ -222,9 +335,16 @@ async function submitApplication(applicationId: string): Promise<void> {
           .eq("user_id", app.user_id);
       }
       await logEvent(applicationId, app.user_id, "submitted", "Application submitted");
+      await recordAtsOutcome(jobRow.ats_type, true);
       console.log(`[submit] ${applicationId}: submitted`);
     } else {
       await fail(result.reason, result.detail);
+      // Only genuine bot-detection signals count toward the breaker —
+      // form_error / timeouts / stale postings are application-specific and
+      // must not halt an entire ATS for every user.
+      if (result.reason === "captcha" || result.reason === "bot_wall") {
+        await recordAtsOutcome(jobRow.ats_type, false, result.reason);
+      }
       console.log(`[submit] ${applicationId}: failed (${result.reason})`);
     }
   } catch (err) {
@@ -244,7 +364,9 @@ export function startSubmitWorkers(): Worker[] {
         {
           connection,
           concurrency: 1, // one browser submission at a time per ATS
-          limiter: { max: 6, duration: 60_000 }, // conservative per-ATS pace
+          // DECISIONS.md D3: minutes apart, not seconds — 1 per 3min per ATS
+          // (plus 10-45s jitter inside the processor).
+          limiter: { max: 1, duration: 180_000 },
         },
       ),
   );

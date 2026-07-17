@@ -39,6 +39,7 @@ const STATUS_STYLES: Record<string, string> = {
   submitted: "bg-accent text-white",
   failed: "bg-danger-soft text-danger",
   skipped: "bg-paper text-ink-soft",
+  needs_manual_verification: "bg-danger-soft text-danger",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -49,6 +50,7 @@ const STATUS_LABELS: Record<string, string> = {
   submitted: "submitted",
   failed: "failed",
   skipped: "skipped",
+  needs_manual_verification: "verify manually",
 };
 
 export function StatusBadge({ status }: { status: string }) {

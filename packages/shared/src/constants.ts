@@ -66,3 +66,51 @@ export const BANNED_PHRASES = [
   "I am thrilled",
   "dynamic individual",
 ] as const;
+
+/**
+ * EEOC / demographic / special-category fields are NEVER AUTO-filled, on any
+ * ATS, for anyone (DECISIONS.md D3): resolution must not generate values for
+ * them (deterministic or LLM). Voluntary self-identification is the
+ * applicant's decision alone — an answer the user explicitly types in review
+ * IS deliverable; one the machine invented is not.
+ *
+ * Matching is done on a normalized form (camelCase/underscores/brackets ->
+ * spaces, lowercased) so `genderIdentity`, `veteran_status`, and
+ * "Voluntary Self-Identification of Disability" all match. Prefix tokens use
+ * \w* so ethnicity/ethnicities/disabilities match; exact tokens (race) keep
+ * word boundaries so trace/embrace don't.
+ */
+const DEMOGRAPHIC_TOKENS =
+  /\b(eeoc?|gender\w*|race|racial|ethnic\w*|hispanic\w*|latino|latina|latinx|veteran\w*|disabilit\w*|disabled|sexual orientation|sexualit\w*|lgbtq\w*|transgender\w*|pronouns?|religio\w*|nationalit\w*|date of birth|self.?identif\w*|demographic\w*)\b/;
+
+function normalizeFieldText(value: string): string {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2") // camelCase -> spaced
+    .replace(/[_\-[\].]+/g, " ")
+    .toLowerCase();
+}
+
+export function isDemographicField(id: string, label: string): boolean {
+  return (
+    /^eeo\[/.test(id) ||
+    DEMOGRAPHIC_TOKENS.test(normalizeFieldText(id)) ||
+    DEMOGRAPHIC_TOKENS.test(normalizeFieldText(label))
+  );
+}
+
+/**
+ * Field types the fill layer can reliably drive on a live form. A REQUIRED
+ * field outside this set can never be auto-submitted — approval must refuse
+ * it rather than let the submission fail on the employer's validation.
+ */
+export const FILLABLE_FIELD_TYPES = new Set<string>([
+  "text",
+  "textarea",
+  "select",
+  "multiselect",
+  "radio",
+  "email",
+  "phone",
+  "number",
+  "file",
+]);

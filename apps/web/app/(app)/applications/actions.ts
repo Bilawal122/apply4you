@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import {
   PLANS,
+  FILLABLE_FIELD_TYPES,
   currentUsagePeriod,
   type Field,
   type PlanId,
@@ -110,7 +111,7 @@ async function approveOne(userId: string, applicationId: string): Promise<string
 
   const { data: app } = await admin
     .from("applications")
-    .select("id, user_id, status, unresolved_fields, jobs!inner(ats_type)")
+    .select("id, user_id, status, unresolved_fields, form_schema, jobs!inner(ats_type)")
     .eq("id", applicationId)
     .eq("user_id", userId)
     .single();
@@ -118,6 +119,16 @@ async function approveOne(userId: string, applicationId: string): Promise<string
   if (app.status !== "draft") {
     if (app.status === "needs_review") return "answer the required fields first";
     return `already ${app.status}`;
+  }
+
+  // A required field type the fill layer can't drive (consent checkbox, date
+  // picker, unknown widget) would fail on the employer's validation every
+  // time — refuse the approval instead (DECISIONS.md D3).
+  const undrivable = ((app.form_schema ?? []) as Field[]).find(
+    (f) => f.required && !FILLABLE_FIELD_TYPES.has(f.type),
+  );
+  if (undrivable) {
+    return `this form has a required "${undrivable.label.slice(0, 60)}" (${undrivable.type}) we can't fill automatically — apply via the posting link, then Skip this one`;
   }
 
   const { data: transitioned } = await admin

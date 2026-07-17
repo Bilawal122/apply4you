@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright";
-import type { Field, ResolvedValues } from "@apply4you/shared";
+import { isDemographicField, type Field, type ResolvedValues } from "@apply4you/shared";
 import { registerAllAdapters, getAdapter, type LocalFile } from "@apply4you/ats";
 
 /**
@@ -84,6 +84,10 @@ function formPage(mode: string): string {
 
     <label for="question_cover">Why do you want to work here?</label>
     <textarea id="question_cover" name="question_cover"></textarea>
+
+    <!-- demographic trap: must NEVER be auto-filled even when a value exists -->
+    <label for="gender">Gender (voluntary self-identification)</label>
+    <input id="gender" name="gender" type="text">
 
     <!-- react-select-style single select (mirrors Greenhouse multi_value_single_select) -->
     <label>Are you authorized to work in this country? *</label>
@@ -189,6 +193,7 @@ const FIELDS: Field[] = [
   { id: "email", label: "Email", type: "text", required: true },
   { id: "phone", label: "Phone", type: "text", required: false },
   { id: "question_cover", label: "Why do you want to work here?", type: "textarea", required: false },
+  { id: "gender", label: "Gender (voluntary self-identification)", type: "text", required: false },
   { id: "question_auth", label: "Are you authorized?", type: "select", options: ["Yes", "No"], required: true },
   { id: "question_langs[]", label: "Which languages do you use?", type: "multiselect", options: ["TypeScript", "Python", "COBOL"], required: false },
 ];
@@ -199,6 +204,9 @@ const VALUES: ResolvedValues = {
   email: "test.candidate@example.com",
   phone: "+44 7000 000000",
   question_cover: "I build reliable form-filling machinery and want to prove it works.",
+  // Resolution NEVER generates demographic values (DECISIONS.md D3) — this is
+  // exactly what resolved_fields contains for such a field in the auto flow.
+  gender: null,
   question_auth: "Yes",
   "question_langs[]": "TypeScript||Python",
 };
@@ -211,6 +219,41 @@ function check(label: string, ok: boolean, detail?: string): void {
 }
 
 async function main(): Promise<void> {
+  // --- pure-function gate: isDemographicField must catch known evasions and
+  // spare legitimate questions (D3 hard rule; regressions here are critical).
+  console.log("--- isDemographicField ---");
+  const mustMatch = [
+    "Ethnicity",
+    "Disability status",
+    "Do you have a disability?",
+    "Voluntary Self-Identification of Disability",
+    "Sexuality",
+    "disabilities",
+    "veterans",
+    "genderIdentity",
+    "veteranStatus",
+    "raceEthnicity",
+    "Are you Hispanic/Latino?",
+    "date_of_birth",
+    "Pronouns",
+    "Religion",
+  ];
+  const mustNotMatch = [
+    "What is your notice period?",
+    "Current location",
+    "How did you hear about us?",
+    "trace elements experience",
+    "Can you embrace ambiguity?",
+    "Does this role engender excitement?",
+    "Salary expectations",
+  ];
+  for (const label of mustMatch) {
+    check(`demographic detected: "${label}"`, isDemographicField("question_1", label));
+  }
+  for (const label of mustNotMatch) {
+    check(`NOT demographic: "${label}"`, !isDemographicField("question_1", label));
+  }
+
   registerAllAdapters();
   const adapter = getAdapter("greenhouse");
   const close = await startServer();
@@ -252,6 +295,11 @@ async function main(): Promise<void> {
     JSON.stringify(langs),
   );
   check("resume file uploaded", (posted?.files["resume"]?.size ?? 0) > 20, JSON.stringify(posted?.files["resume"]));
+  check(
+    "demographic field left empty in the auto flow (resolve nulls it, fill skips nulls)",
+    posted?.fields["gender"] === "",
+    `posted gender="${String(posted?.fields["gender"])}"`,
+  );
 
   // 2. Happy path B: inline "thank you" text (text branch)
   console.log("\n--- scenario: inline confirmation text ---");

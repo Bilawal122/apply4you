@@ -12,6 +12,9 @@ export const ApplicationStatusSchema = z.enum([
   "submitted",
   "skipped",
   "failed",
+  // Worker died mid-submission; a human verifies against the ATS before any
+  // retry (DECISIONS.md D3) — never auto-requeued.
+  "needs_manual_verification",
 ]);
 export type ApplicationStatus = z.infer<typeof ApplicationStatusSchema>;
 
@@ -22,7 +25,7 @@ export const SubmitResultSchema = z.discriminatedUnion("outcome", [
   z.object({ outcome: z.literal("submitted") }),
   z.object({
     outcome: z.literal("failed"),
-    reason: z.enum(["captcha", "bot_wall", "form_error", "confirmation_timeout", "navigation_error"]),
+    reason: z.enum(["captcha", "bot_wall", "form_error", "confirmation_timeout", "navigation_error", "posting_closed"]),
     detail: z.string().optional(),
   }),
 ]);

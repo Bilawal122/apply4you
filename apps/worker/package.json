@@ -14,6 +14,7 @@
     "@apply4you/ai": "workspace:*",
     "@apply4you/ats": "workspace:*",
     "@apply4you/shared": "workspace:*",
+    "@sentry/node": "^10.66.0",
     "@supabase/supabase-js": "^2.50.0",
     "bullmq": "^5.56.0",
     "ioredis": "^5.6.1",

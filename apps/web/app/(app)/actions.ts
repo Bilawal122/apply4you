@@ -147,18 +147,28 @@ export async function queueTopMatches(count: number): Promise<{ queued?: number;
   const n = Math.max(1, Math.min(25, Math.floor(count)));
   const admin = createAdminClient();
 
-  const { data: existing } = await admin.from("applications").select("job_id").eq("user_id", user.id);
+  const [{ data: existing }, { data: prefsRow }] = await Promise.all([
+    admin.from("applications").select("job_id").eq("user_id", user.id),
+    admin.from("preferences").select("excluded_companies").eq("user_id", user.id).single(),
+  ]);
   const appliedJobIds = new Set((existing ?? []).map((r: { job_id: string }) => r.job_id));
+  const blocklist = new Set(
+    ((prefsRow?.excluded_companies ?? []) as string[]).map((c) => c.trim().toLowerCase()),
+  );
 
   const { data: matches } = await admin
     .from("job_matches")
-    .select("job_id, jobs!inner(closed_at)")
+    .select("job_id, jobs!inner(closed_at, company)")
     .eq("user_id", user.id)
     .is("jobs.closed_at", null)
     .order("score", { ascending: false })
     .limit(n + appliedJobIds.size);
 
   const targets = (matches ?? [])
+    .filter((m) => {
+      const company = (m.jobs as unknown as { company: string }).company;
+      return !blocklist.has(company.trim().toLowerCase());
+    })
     .map((m: { job_id: string }) => m.job_id)
     .filter((id: string) => !appliedJobIds.has(id))
     .slice(0, n);
@@ -202,6 +212,18 @@ export async function queueApplication(jobId: string): Promise<{ error?: string 
   // Users have no INSERT policy on applications — creation goes through the
   // admin client after the session check, keeping status transitions server-owned.
   const admin = createAdminClient();
+
+  // Blocklist (DECISIONS.md D3): companies on the do-not-apply list never
+  // enter the pipeline, even via a direct Queue click.
+  const [{ data: jobRow }, { data: prefsRow }] = await Promise.all([
+    admin.from("jobs").select("company").eq("id", jobId).single(),
+    admin.from("preferences").select("excluded_companies").eq("user_id", user.id).single(),
+  ]);
+  const excluded = ((prefsRow?.excluded_companies ?? []) as string[]).map((c) => c.trim().toLowerCase());
+  if (jobRow && excluded.includes(jobRow.company.trim().toLowerCase())) {
+    return { error: `${jobRow.company} is on your do-not-apply list (Preferences → Excluded companies)` };
+  }
+
   const { data: app, error } = await admin
     .from("applications")
     .insert({ user_id: user.id, job_id: jobId, mode: "auto", status: "draft" })

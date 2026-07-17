@@ -1,5 +1,13 @@
 import { Worker, type Job } from "bullmq";
-import { QUEUES, type Field, type ResolvedValues, type UnresolvedField, type AtsType } from "@apply4you/shared";
+import {
+  QUEUES,
+  isDemographicField,
+  FILLABLE_FIELD_TYPES,
+  type Field,
+  type ResolvedValues,
+  type UnresolvedField,
+  type AtsType,
+} from "@apply4you/shared";
 import { getAdapter, type JobRef } from "@apply4you/ats";
 import { resolveDeterministic, resolveFieldsWithLlm, generateCoverLetter } from "@apply4you/ai";
 import { connection } from "../queues.js";
@@ -12,9 +20,11 @@ type ResolveData = { applicationId: string };
 function isExcluded(field: Field): boolean {
   if (field.type === "file") return true; // resume upload handled at fill time
   if (field.id === "resume_text") return true; // Greenhouse paste-resume textarea
-  if (/^eeo\[/.test(field.id)) return true;
+  // EEOC/demographic/special-category: never auto-filled (DECISIONS.md D3).
+  if (isDemographicField(field.id, field.label)) return true;
   return false;
 }
+
 
 function isCoverLetterField(field: Field): boolean {
   return field.type === "textarea" && /cover.?letter/i.test(`${field.id} ${field.label}`);
@@ -99,6 +109,21 @@ async function resolveApplication(applicationId: string): Promise<void> {
   const unresolved: UnresolvedField[] = workable
     .filter((f) => f.type !== "file" && resolvedFields[f.id] === null)
     .map((f) => ({ id: f.id, label: f.label, required: f.required }));
+
+  // Pre-flight (DECISIONS.md D3): a required field the fill layer can't
+  // reliably drive (consent checkboxes, date pickers, unknown widgets) or a
+  // required demographic question parks the application for the human — no
+  // best-effort fills on real employers.
+  for (const f of formSchema) {
+    if (!f.required) continue;
+    const unfillable = !FILLABLE_FIELD_TYPES.has(f.type);
+    const requiredDemographic = isDemographicField(f.id, f.label);
+    if ((unfillable || requiredDemographic) && !unresolved.some((u) => u.id === f.id)) {
+      resolvedFields[f.id] = null;
+      unresolved.push({ id: f.id, label: f.label, required: true });
+    }
+  }
+
   const hasRequiredGap = unresolved.some((u) => u.required);
   const status = hasRequiredGap ? "needs_review" : "draft";
 
