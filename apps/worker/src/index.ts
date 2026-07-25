@@ -3,7 +3,7 @@ import { registerAllAdapters } from "@apply4you/ats";
 import { registerUsageSink } from "./usage.js";
 import { connection, queues } from "./queues.js";
 import { supabaseAdmin } from "./supabase.js";
-import { schedulePolling, startSourcingWorker } from "./processors/source-poll.js";
+import { schedulePolling, scheduleRetention, startSourcingWorker } from "./processors/source-poll.js";
 import { startEmbeddingWorker, startProfileEmbeddingWorker } from "./processors/embed.js";
 import { scheduleNightlyMatching, startMatchingWorker } from "./processors/match.js";
 import { startResolveWorker } from "./processors/resolve.js";
@@ -136,8 +136,9 @@ async function main(): Promise<void> {
   await reenqueueApprovedApplications();
 
   await schedulePolling();
+  await scheduleRetention();
   const sourcing = startSourcingWorker();
-  console.log("[worker] sourcing worker started (poll-all every 2h)");
+  console.log("[worker] sourcing worker started (poll-all every 2h, retention purge daily)");
 
   await scheduleNightlyMatching();
   const embedding = startEmbeddingWorker();

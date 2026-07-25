@@ -1,5 +1,23 @@
 # Deployment
 
+> **INCIDENT RUNBOOK — Supabase free-tier auto-pause (first hit 2026-07-25).**
+> The free tier pauses a project after ~7 idle days. Symptoms: every REST/auth
+> request returns **503**, `get_project` may still claim `ACTIVE_HEALTHY`
+> (stale), no postgres logs. The production site is fully down while paused.
+> Recovery, in order:
+> 1. Any management-API touch (or dashboard visit) triggers auto-restore —
+>    usually recovers in ~2-5 minutes.
+> 2. If still 503 after ~10 min the restore is wedged: dashboard →
+>    project → Settings → General → **Restart project** (requires dashboard
+>    login — sessions expire, expect to re-auth with GitHub).
+> 3. Still down 30+ min after that: open a ticket at
+>    https://app.supabase.com/support/new (they state the 30-min line).
+>
+> Prevention while on the free tier: any DB activity resets the 7-day clock.
+> A weekly keep-alive (one SELECT via a scheduled GitHub Action or cron) is
+> enough; the real fix is Supabase Pro ($25/mo) — per DECISIONS.md D2 that
+> waits until external users exist.
+
 Two services: the **web app** on Vercel (already live) and the **worker** on
 Railway (not yet deployed — this is the one thing that makes the auto-apply loop
 run). Supabase and Upstash Redis are already provisioned.

@@ -26,6 +26,20 @@ export async function schedulePolling(): Promise<void> {
   });
 }
 
+/** Retention (DECISIONS.md D4): daily purge of long-closed, never-applied jobs. */
+export async function scheduleRetention(): Promise<void> {
+  await queues.sourcing.upsertJobScheduler("purge-closed-scheduler", { pattern: "30 4 * * *" }, {
+    name: "purge-closed",
+    data: {},
+  });
+}
+
+async function purgeClosedJobs(): Promise<void> {
+  const { data, error } = await supabaseAdmin().rpc("purge_closed_jobs", { p_days: 30 });
+  if (error) throw new Error(`purge_closed_jobs failed: ${error.message}`);
+  console.log(`[retention] purged ${data ?? 0} closed jobs (>30d old, never applied to)`);
+}
+
 async function pollAll(): Promise<void> {
   const db = supabaseAdmin();
   const { data: sources, error } = await db
@@ -161,6 +175,7 @@ export function startSourcingWorker(): Worker {
     async (job: Job) => {
       if (job.name === "poll-all") return pollAll();
       if (job.name === "poll-board") return pollBoard((job.data as PollBoardData).boardSourceId);
+      if (job.name === "purge-closed") return purgeClosedJobs();
       throw new Error(`Unknown sourcing job: ${job.name}`);
     },
     {

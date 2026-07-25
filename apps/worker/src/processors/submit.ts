@@ -207,7 +207,7 @@ async function submitApplication(applicationId: string): Promise<void> {
   const { data: app } = await db
     .from("applications")
     .select(
-      "id, user_id, form_schema, resolved_fields, cover_letter, jobs!inner(id, ats_type, external_id, apply_url, board_sources(slug))",
+      "id, user_id, form_schema, resolved_fields, cover_letter, jobs!inner(id, ats_type, external_id, apply_url, title, company, location, description, board_sources(slug))",
     )
     .eq("id", applicationId)
     .single();
@@ -217,6 +217,10 @@ async function submitApplication(applicationId: string): Promise<void> {
     ats_type: AtsType;
     external_id: string;
     apply_url: string;
+    title: string;
+    company: string;
+    location: string | null;
+    description: string | null;
     board_sources: { slug: string } | null;
   };
   const fields = (app.form_schema ?? []) as Field[];
@@ -319,6 +323,18 @@ async function submitApplication(applicationId: string): Promise<void> {
         .update({
           status: "submitted",
           submitted_fields: values, // immutable snapshot (FR-33)
+          // Retention (DECISIONS.md D4): the job row may be purged 30 days
+          // after closing — everything interview prep or an audit needs
+          // lives on the application from the moment of submission.
+          job_snapshot: {
+            title: jobRow.title,
+            company: jobRow.company,
+            location: jobRow.location,
+            description: jobRow.description,
+            apply_url: jobRow.apply_url,
+            ats_type: jobRow.ats_type,
+            captured_at: new Date().toISOString(),
+          },
           submitted_at: new Date().toISOString(),
         })
         .eq("id", applicationId);
