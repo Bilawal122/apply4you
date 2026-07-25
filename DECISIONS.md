@@ -107,6 +107,17 @@ snapshot date logged per match, company-name canonicalization (#28) treated as
 a near-prerequisite. Until it exists, **no visa-dependent friends are invited**
 (or the first cohort is explicitly home-status-only and told so).
 
+> **D5 coverage check — RESULT (2026-07-25): GO.** Matched all 294 active
+> boards against the gov.uk Worker/Temporary Worker register (2026-07-24
+> edition, 125,679 orgs, exact-normalized name matching): **28% of boards hold
+> a licence** (vs the <15% kill line) and **63% of our 1,270 UK-located open
+> jobs sit at licensed sponsors** (800 jobs) — and that's a floor, since
+> legal-entity mismatches (Stripe/GitLab/Datadog-class names) read as false
+> negatives without canonicalization (#28). Greenhouse is the richest licensed
+> segment (36/73 boards, 372 UK jobs), independently validating the
+> Greenhouse-first rollout in D3. Workable is small but dense (90% of its UK
+> jobs at licensed sponsors). The wedge stands; no ATS-roadmap change needed.
+
 ### D6 — Gates and metrics (product-controlled things gate; slow things get tracked)
 - **Founder real submissions unlock when:** D3 gate cleared (either exit) +
   blocklist live + Sentry-on-worker live.
