@@ -121,7 +121,8 @@ async function pollBoard(boardSourceId: string): Promise<void> {
       requires_login: finalJob.requiresLogin,
       posted_at: finalJob.postedAt,
       closed_at: null, // reopened if it had vanished
-      raw: finalJob.raw,
+      // No `raw` payload: it cost 96MB of TOAST at 18k jobs, was rewritten
+      // every poll, and nothing ever read it (adapters fetch forms live).
     });
   }
 
