@@ -18,13 +18,36 @@
 > enough; the real fix is Supabase Pro ($25/mo) — per DECISIONS.md D2 that
 > waits until external users exist.
 
-Two services: the **web app** on Vercel (already live) and the **worker** on
-Railway (not yet deployed — this is the one thing that makes the auto-apply loop
-run). Supabase and Upstash Redis are already provisioned.
+Two services: the **web app** on Vercel (already live) and the **worker**,
+which per DECISIONS.md D2 runs **attended on the founder's own PC** during the
+dogfood phase (not hosted 24/7). Supabase and Redis (Railway, see below) are
+already provisioned.
 
 The web app only *produces* jobs onto Redis; the worker is the *consumer* that
 resolves, submits, and re-polls. Nothing a user queues is processed until the
-worker runs 24/7, so both halves must point at the **same** Upstash instance.
+worker runs, so both halves must point at the **same** Redis instance.
+
+## Redis: Railway (flat-rate), replacing Upstash (2026-07-27)
+
+Upstash's pay-per-command billing charged for every idle BullMQ poll — it hit
+$6 in 2 days once, then ~8 days of an orphaned local worker process ran the
+bill up further before being caught. Redis now lives as a **Railway service**
+in the `striking-creation` project (flat Hobby-plan pricing, no per-command
+charge), reachable from outside Railway via its **public TCP proxy** endpoint
+(`REDIS_PUBLIC_URL` in that service's Variables tab — the private
+`REDIS_URL`/`railway.internal` host only works for other services *inside* the
+same Railway project, not from Vercel or a local machine).
+
+Both the web app (Vercel) and the local worker's `.env` now point at that
+public URL. **The old Upstash `REDIS_URL` still exists but nothing uses it —
+its pay-per-command plan charges ~$0 while idle, so there is no urgency, but
+it can be deleted whenever convenient:** log into
+[console.upstash.com](https://console.upstash.com) (Continue with Google) →
+open the `dynamic-finch-158539` database → Delete.
+
+If the Railway Redis service is ever recreated, its connection variables
+regenerate — re-copy the new `REDIS_PUBLIC_URL` into both `.env` files and the
+Vercel `REDIS_URL` env var (see the Vercel section below), then redeploy.
 
 ---
 
@@ -46,14 +69,17 @@ hot-reload env into existing deployments:
 | `SUPABASE_URL` | https://bfsiolrihzwogragktvg.supabase.co | |
 | `SUPABASE_SERVICE_ROLE_KEY` | (service-role key — secret) | admin actions throw without it |
 | `GEMINI_API_KEY` | (Google AI Studio key — secret) | résumé parse runs in the web request path |
-| `REDIS_URL` | (Upstash `rediss://…` URL — secret) | **see trap #1** |
+| `REDIS_URL` | Railway Redis **public proxy** URL (`redis://default:…@<host>.proxy.rlwy.net:<port>`) — secret | **see trap #1** |
 | `APP_URL` | `https://apply4you-web-one.vercel.app` | **see trap #2 — no trailing slash** |
 
 **Trap #1 — `REDIS_URL` must be set on the *web* app.** The web app enqueues
 straight to Redis (no HTTP to the worker). If it's missing, ioredis silently
 falls back to `localhost:6379`, the connection fails, and every *Queue* / *Approve*
 click creates a draft row while enqueuing **nothing** — the UI looks like it
-worked. Use the exact same value as the worker.
+worked. Use the exact same value as the worker (Vercel's env-var editor shows a
+greyed placeholder for masked values — click into the field and select-all
+before typing, or a stray character from the placeholder can leak into the
+saved value).
 
 **Trap #2 — `APP_URL` must be the production domain, not `localhost`.** The local
 `.env` has `APP_URL=http://localhost:3000`; if that's copied to Vercel, every
@@ -73,61 +99,53 @@ so to test the signup → onboarding flow locally, also add
 
 ---
 
-## Worker → Railway
+## Worker → attended locally during dogfood (Railway hosting deliberately paused)
 
-> **STATUS 2026-07-16: deliberately STOPPED.** An idle 24/7 BullMQ worker burns
-> Upstash pay-per-command Redis (~$3/day for nothing — 9 queues × blocking
-> polls). The active deployment was removed and **auto-deploy is disabled**, so
-> git pushes will NOT restart it. To bring it back: Railway → striking-creation
-> → @apply4you/worker → Deployments → Redeploy (or re-enable auto-deploy in
-> Settings → Source).
+> **STATUS 2026-07-27** (DECISIONS.md D2): the worker runs **on the founder's
+> own PC, on demand**, not 24/7 on Railway — $0 marginal cost, a residential IP
+> for the first real submissions, and live log-watching. A Railway deployment
+> of `@apply4you/worker` still exists in the project but its **auto-deploy is
+> disabled** (git pushes will NOT restart it) and no active deployment is
+> running. Re-enabling 24/7 hosting is a later step, gated on the friends
+> launch in D6 — flip auto-deploy back on in Settings → Source when that day
+> comes; the four env vars below are unchanged either way.
 >
-> **Before running 24/7 again, kill the idle burn — pick one:**
-> 1. **Move Redis to Railway** (recommended): add a Redis service in the same
->    Railway project (flat resource pricing, no per-command billing), point
->    `REDIS_URL` on both the worker (Railway var) and the web app (Vercel var)
->    at it, and delete the Upstash DB. Idle polling then costs ~nothing.
-> 2. Or run the worker on a schedule (Railway cron: boot every 2h, drain
->    queues, exit) — cheaper, but queued applications wait up to 2h instead of
->    seconds.
+> **Run it locally:** `pnpm --filter @apply4you/worker exec tsx --env-file=../../.env src/index.ts`
+> from the repo root. **Stop it by killing the actual process tree**, not just
+> the wrapping shell — `pnpm exec tsx` spawns child processes, and a partial
+> kill leaves an orphaned worker silently burning Redis/Supabase calls in the
+> background (this happened once: ~8 days undetected). Verify nothing is left
+> with `Get-CimInstance Win32_Process -Filter "Name='node.exe'"` and confirm
+> no `tsx`/`src/index` command lines remain.
 
-New Railway project from the GitHub repo. Railway reads `railway.json` at the repo
-root and builds `apps/worker/Dockerfile` (repo root is the build context; the
-Dockerfile installs the workspace deps + Chromium). It's a long-running background
-process with **no HTTP port** — ignore any Railway "no exposed ports" notice; it
-does not need a public domain.
-
-**Sizing:** pick a plan with **≥ 1 GB RAM** — each submission spins up a headless
-Chromium context.
+If/when it moves back to Railway: `railway.json` at the repo root points at
+`apps/worker/Dockerfile` (repo root is the build context; the Dockerfile
+installs the workspace deps + Chromium). It's a long-running background
+process with **no HTTP port** — ignore any Railway "no exposed ports" notice.
+**Sizing:** pick a plan with **≥ 1 GB RAM** — each submission spins up a
+headless Chromium context.
 
 ### Required environment variables (exactly these four)
 
-The worker reads only `process.env` — the repo `.env` is **not** baked into the
-image, so every value must be set in Railway's Variables tab:
+The worker reads only `process.env` — the repo `.env` is **not** baked into a
+Railway image, so on Railway every value must be set in that service's
+Variables tab (locally, `.env` covers it):
 
 | Key | Value |
 |---|---|
-| `REDIS_URL` | the Upstash `rediss://…` URL — the **same** instance the web app uses |
+| `REDIS_URL` | Railway Redis **public proxy** URL — the **same** instance the web app uses (see the Redis section above) |
 | `SUPABASE_URL` | https://bfsiolrihzwogragktvg.supabase.co |
 | `SUPABASE_SERVICE_ROLE_KEY` | service-role JWT (secret — **not** the anon key) |
 | `GEMINI_API_KEY` | Google AI Studio key |
 
 `PLAYWRIGHT_HEADLESS` and `WORKER_CONCURRENCY` appear in `.env` but the worker
 does **not** read them — leave them unset (it defaults to headless, which is what
-a server wants).
-
-### Upstash Redis — two settings that will bite otherwise
-
-- **Eviction policy = `noeviction`.** BullMQ requires it; Upstash's default
-  eviction can silently drop queue keys and corrupt job state.
-- **Command quota.** A 24/7 worker with blocking polls across ~9 queues + a 60s
-  heartbeat burns commands fast — the Upstash **free tier (500K cmds/mo) will run
-  out in days**. Move that Redis DB to a paid/pay-as-you-go tier before relying on
-  the worker continuously, or it will stop mid-day.
+a server wants; running locally with a visible browser needs a code change,
+not this env var).
 
 ### Confirm a healthy boot
 
-Railway logs should show, in order:
+Logs should show, in order:
 
 ```
 [worker] redis connected (PONG)
@@ -139,18 +157,18 @@ Railway logs should show, in order:
 [worker] heartbeat <timestamp>      ← every 60s thereafter
 ```
 
-Once it's up, the every-2h poll scheduler self-registers, so sourcing (currently
-4 days stale) refreshes automatically and re-queued applications drain within a
-minute.
+Once it's up, the every-2h poll scheduler self-registers (idempotent — safe to
+start/stop the worker repeatedly), so sourcing refreshes automatically and
+re-queued applications drain within a minute of being run.
 
 ---
 
 ## After the worker is live — before enabling real submissions
 
-1. **Upload a résumé through the app.** The `resumes` storage bucket is currently
-   empty (0 files); `submit.ts` hard-fails with `no_resume` before Playwright ever
-   opens a form, so no application can submit until a real résumé is stored and
-   `profiles.resume_storage_path` is set.
+1. **Upload a résumé for the account you're actually using.** `submit.ts`
+   hard-fails with `no_resume` before Playwright ever opens a form if
+   `profiles.resume_storage_path` is unset for that user — check per-account,
+   don't assume from a different test account.
 2. **Validate one submission on a self-owned Greenhouse sandbox board** (task #15).
    The submit path has never clicked a real submit button. Seed a `board_source` +
    `job` + `approved` application pointing at your sandbox, run the worker with
