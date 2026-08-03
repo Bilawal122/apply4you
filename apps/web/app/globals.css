@@ -1,40 +1,117 @@
 @import "tailwindcss";
 
 /*
-  Apply4You design tokens.
+  Apply4You design tokens — "official register".
 
-  Voice rule: everything the machine produces (scores, statuses, filled values,
-  counts, timestamps) is set in mono; everything human is sans. One accent —
-  deep teal — for actions and success; amber marks "needs you"; brick marks
-  failure. Status color is information, not decoration.
+  The product's subject is forms, registers and stamps: the Home Office
+  sponsor register, an ATS application form, an approval. So the interface
+  borrows that grammar — a label column in mono, a value slot, a hairline
+  rule, a stamped verdict — rather than generic SaaS card-and-pill.
+
+  Two rules hold the whole system together:
+
+  1. VOICE. Everything the machine produced (scores, statuses, filled values,
+     counts, timestamps, verdicts) is mono. Everything a person wrote is sans.
+     Same super-family, so it reads as one system speaking in two registers.
+
+  2. PROVENANCE. Every value on screen can say where it came from — your CV,
+     the AI, you, or nowhere. Cobalt is the machine's ink. Amber means the
+     machine refused to guess and needs you. Colour is information here, never
+     decoration.
 */
 :root {
-  --background: #f6f7f8; /* porcelain */
-  --foreground: #1c2430; /* ink */
+  --background: #f1f3f6; /* cool paper stock */
+  --foreground: #12161f; /* ink */
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sans-src);
+  --font-mono: var(--font-mono-src);
 
-  --color-ink: #1c2430;
-  --color-ink-soft: #55606e;
-  --color-paper: #f6f7f8;
+  --color-ink: #12161f;
+  --color-ink-soft: #5a6472;
+  --color-ink-faint: #8b94a3;
+  --color-paper: #f1f3f6;
   --color-card: #ffffff;
-  --color-line: #e3e6ea;
-  --color-accent: #0f766e; /* deep teal: actions, submitted */
-  --color-accent-soft: #e4f1ef;
-  --color-attention: #b45309; /* amber: needs the user */
-  --color-attention-soft: #fdf3e3;
-  --color-danger: #b04438; /* brick: failed */
-  --color-danger-soft: #f9ebe9;
+  --color-line: #d9dee6; /* hairline: structural, meant to be seen */
+  --color-line-soft: #e7ebf1;
+
+  --color-accent: #1b4dd8; /* cobalt: stamp ink — actions, verified, submitted */
+  --color-accent-soft: #e8edfd;
+  --color-accent-deep: #143aa6;
+  --color-attention: #a65a00; /* amber: needs you */
+  --color-attention-soft: #fbf0dd;
+  --color-danger: #a3342a; /* brick: failed */
+  --color-danger-soft: #f8e9e7;
+
+  --radius-doc: 3px; /* documents don't have soft corners */
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--font-sans-src), system-ui, sans-serif;
+  font-size: 0.9375rem; /* 15px — this is a reading interface */
+  line-height: 1.55;
 }
 
+/*
+  The workhorse of the system: a form-field label. Mono, small, wide-tracked,
+  uppercase. Used for every machine-side label in the app, which is what gives
+  every screen the same "official document" texture without any ornament.
+*/
+.label-mono {
+  font-family: var(--font-mono-src), ui-monospace, monospace;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+}
+
+/* Display type: tight, confident, set at weight 600 — a register masthead. */
+.display {
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+}
+
+/*
+  The signature mark. When the machine refuses to guess a field, it says so
+  in the vocabulary of the thing it's filling in: a rubber stamp on a form.
+  This is the one deliberately informal element in the system — everything
+  else stays perfectly square — so it has to stay rare. It appears only on
+  genuinely unanswered required fields.
+*/
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.1875rem 0.5rem;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  font-family: var(--font-mono-src), ui-monospace, monospace;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transform: rotate(-1.5deg);
+  opacity: 0.92;
+}
+
+/* Ruled field list — label column left, value right, hairline between rows. */
+.field-rule + .field-rule {
+  border-top: 1px solid var(--color-line-soft);
+}
+
+/* Native controls adopt the stamp ink instead of the browser's default blue. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--color-accent);
+}
+
+::selection {
+  background: var(--color-accent-soft);
+}

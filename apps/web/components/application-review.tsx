@@ -3,7 +3,16 @@
 import { useState, useTransition } from "react";
 import type { Field, ResolvedValues, UnresolvedField } from "@apply4you/shared";
 import { approveApplication, saveApplicationFields, skipApplication } from "@/app/(app)/applications/actions";
-import { Spinner, btnGhost, btnPrimary, btnSecondary, inputCls } from "@/components/ui";
+import {
+  NeedsYouStamp,
+  Provenance,
+  Spinner,
+  btnGhost,
+  btnPrimary,
+  btnSecondary,
+  inputCls,
+  type Source,
+} from "@/components/ui";
 
 export interface ReviewApp {
   id: string;
@@ -34,6 +43,9 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
   // Which button was clicked — so the pressed one shows its own spinner/label
   // while all three stay disabled.
   const [acting, setActing] = useState<"approve" | "save" | "skip" | null>(null);
+  // Fields the user has touched this session, so their answers can be marked
+  // as theirs rather than the machine's.
+  const [edited, setEdited] = useState<Set<string>>(new Set());
 
   // resume_text (paste-resume textarea) and EEOC blocks are never filled by
   // the machine — hide them from review too.
@@ -44,7 +56,15 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
 
   const setValue = (id: string, value: string) => {
     setValues((v) => ({ ...v, [id]: value }));
+    setEdited((e) => new Set(e).add(id));
     setDirty(true);
+  };
+
+  /** Honest provenance: only what the stored data actually supports. */
+  const sourceOf = (id: string, value: string): Source => {
+    if (edited.has(id)) return "you";
+    if (!value) return "unknown";
+    return "profile";
   };
 
   const payload = (): ResolvedValues =>
@@ -83,106 +103,141 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
   };
 
   return (
-    <div className="rounded-lg border border-line bg-card">
+    <div className="rounded-[3px] border border-line bg-card">
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="flex w-full items-center justify-between gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-paper/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-paper focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
       >
         <div className="min-w-0">
-          <span className="text-sm font-semibold text-ink">{app.jobTitle}</span>
+          <span className="text-[15px] font-semibold text-ink">{app.jobTitle}</span>
           <span className="ml-2 text-sm text-ink-soft">{app.company}</span>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-3">
           {app.status === "needs_review" ? (
-            <span className="rounded bg-attention-soft px-1.5 py-0.5 font-mono text-[11px] font-medium text-attention">
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-attention">
               {requiredGaps} answer{requiredGaps === 1 ? "" : "s"} needed
             </span>
           ) : (
-            <span className="rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[11px] font-medium text-accent">
-              ready
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-accent">
+              ready to send
             </span>
           )}
-          <span className="text-ink-soft">{expanded ? "▾" : "▸"}</span>
+          <span className="font-mono text-xs text-ink-faint">{expanded ? "−" : "+"}</span>
         </div>
       </button>
 
       {expanded && (
         <div className="border-t border-line px-4 py-4">
-          <a
-            href={app.applyUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="mb-4 inline-block text-xs text-ink-soft underline decoration-line hover:text-ink"
-          >
-            View the job posting
-          </a>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <p className="label-mono">What we&apos;ll send</p>
+            <a
+              href={app.applyUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-ink-soft underline decoration-line underline-offset-2 transition-colors hover:text-ink"
+            >
+              View the job posting ↗
+            </a>
+          </div>
 
-          <div className="flex flex-col gap-3">
+          {/*
+            Every answer is shown as a ruled register row: mono label and its
+            provenance on the left, the editable value on the right. A missing
+            required answer is stamped rather than silently left blank — the
+            gap is the point, not an embarrassment to hide.
+          */}
+          <div className="flex flex-col">
             {editableFields.map((field) => {
               const value = values[field.id] ?? "";
               const missing = field.required && !value;
+              const source = sourceOf(field.id, value);
+
               return (
-                <div key={field.id}>
-                  <label className={`text-xs font-medium ${missing ? "text-attention" : "text-ink-soft"}`}>
-                    {field.label}
-                    {field.required ? " *" : ""}
-                    {missing ? " — needs your answer" : ""}
-                  </label>
-                  {field.type === "textarea" ? (
-                    <textarea
-                      className={`${inputCls} font-mono text-xs`}
-                      rows={4}
-                      maxLength={field.maxLength}
-                      value={value ?? ""}
-                      onChange={(e) => setValue(field.id, e.target.value)}
-                    />
-                  ) : field.options?.length && (field.type === "select" || field.type === "radio") ? (
-                    <select
-                      className={`${inputCls} font-mono text-xs`}
-                      value={value ?? ""}
-                      onChange={(e) => setValue(field.id, e.target.value)}
-                    >
-                      <option value="">— not answered —</option>
-                      {field.options.map((o) => (
-                        <option key={o} value={o}>
-                          {o}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      className={`${inputCls} font-mono text-xs`}
-                      maxLength={field.maxLength}
-                      value={value ?? ""}
-                      onChange={(e) => setValue(field.id, e.target.value)}
-                      placeholder={field.type === "multiselect" ? "Separate multiple choices with ||" : undefined}
-                    />
-                  )}
+                <div
+                  key={field.id}
+                  className="field-rule grid grid-cols-1 gap-x-6 gap-y-1.5 py-3 sm:grid-cols-[minmax(9rem,13rem)_1fr]"
+                >
+                  <div className="flex flex-col items-start gap-1.5">
+                    {/*
+                      The employer wrote this question, so it's set in sans and
+                      left in its original sentence case. Forcing it through the
+                      mono uppercase label style made real ATS questions — which
+                      run to a full sentence — genuinely hard to read.
+                    */}
+                    <label className="text-[13px] leading-snug text-ink-soft" htmlFor={`f-${field.id}`}>
+                      {field.label}
+                      {field.required && <span className="text-attention"> *</span>}
+                    </label>
+                    {missing ? <NeedsYouStamp /> : <Provenance source={source} />}
+                  </div>
+
+                  <div className="min-w-0">
+                    {field.type === "textarea" ? (
+                      <textarea
+                        id={`f-${field.id}`}
+                        className={`${inputCls} ${missing ? "border-attention/50" : ""}`}
+                        rows={4}
+                        maxLength={field.maxLength}
+                        value={value ?? ""}
+                        onChange={(e) => setValue(field.id, e.target.value)}
+                      />
+                    ) : field.options?.length && (field.type === "select" || field.type === "radio") ? (
+                      <select
+                        id={`f-${field.id}`}
+                        className={`${inputCls} ${missing ? "border-attention/50" : ""}`}
+                        value={value ?? ""}
+                        onChange={(e) => setValue(field.id, e.target.value)}
+                      >
+                        <option value="">— not answered —</option>
+                        {field.options.map((o) => (
+                          <option key={o} value={o}>
+                            {o}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        id={`f-${field.id}`}
+                        className={`${inputCls} ${missing ? "border-attention/50" : ""}`}
+                        maxLength={field.maxLength}
+                        value={value ?? ""}
+                        onChange={(e) => setValue(field.id, e.target.value)}
+                        placeholder={
+                          field.type === "multiselect" ? "Separate multiple choices with ||" : undefined
+                        }
+                      />
+                    )}
+                  </div>
                 </div>
               );
             })}
-
-            {(clField || coverLetter) && (
-              <div className="rounded-md border border-line bg-paper p-3">
-                <label className="text-xs font-medium text-ink-soft">
-                  Cover letter {clField?.required ? "*" : "(sent with this application)"}
-                </label>
-                <textarea
-                  className={`${inputCls} mt-1 font-mono text-xs`}
-                  rows={8}
-                  maxLength={clField?.maxLength}
-                  value={coverLetter}
-                  onChange={(e) => {
-                    setCoverLetter(e.target.value);
-                    setDirty(true);
-                  }}
-                />
-              </div>
-            )}
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-2">
+          {(clField || coverLetter) && (
+            <div className="mt-5 border-t border-line pt-4">
+              <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-2">
+                <label className="text-[13px] font-medium text-ink" htmlFor={`cl-${app.id}`}>
+                  Cover letter{clField?.required && <span className="text-attention"> *</span>}
+                </label>
+                <Provenance source={edited.has("__cl") ? "you" : "ai"} />
+              </div>
+              <textarea
+                id={`cl-${app.id}`}
+                className={inputCls}
+                rows={8}
+                maxLength={clField?.maxLength}
+                value={coverLetter}
+                onChange={(e) => {
+                  setCoverLetter(e.target.value);
+                  setEdited((s) => new Set(s).add("__cl"));
+                  setDirty(true);
+                }}
+              />
+            </div>
+          )}
+
+          <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-line pt-4">
             <button
               type="button"
               onClick={approve}
@@ -201,7 +256,7 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
               {acting === "skip" && <Spinner />}
               {acting === "skip" ? "Skipping…" : "Skip"}
             </button>
-            {message && <span className="text-xs text-ink-soft">{message}</span>}
+            {message && <span className="font-mono text-xs text-ink-soft">{message}</span>}
           </div>
         </div>
       )}

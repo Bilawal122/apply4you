@@ -14,15 +14,18 @@ const NAV = [
 export function NavLinks() {
   const pathname = usePathname();
   return (
-    <nav className="flex gap-1">
+    /* Scrolls inside itself on narrow screens so the page body never does. */
+    <nav className="flex min-w-0 gap-4 overflow-x-auto sm:gap-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {NAV.map((item) => {
         const active = pathname.startsWith(item.href);
         return (
           <Link
             key={item.href}
             href={item.href}
-            className={`rounded-md px-2.5 py-1.5 text-sm transition-colors ${
-              active ? "bg-accent-soft font-medium text-accent" : "text-ink-soft hover:text-ink"
+            className={`-mb-px shrink-0 whitespace-nowrap border-b-2 px-1 py-2 text-sm transition-colors ${
+              active
+                ? "border-accent font-medium text-ink"
+                : "border-transparent text-ink-soft hover:border-line hover:text-ink"
             }`}
           >
             {item.label}

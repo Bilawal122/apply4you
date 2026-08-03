@@ -81,10 +81,10 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-ink">Job feed</h1>
-          <p className="mt-1 text-sm text-ink-soft">
+          <h1 className="display text-2xl text-ink">Job feed</h1>
+          <p className="mt-1.5 text-sm text-ink-soft">
             Ranked by fit with your profile. Queue the ones you want — nothing submits until you
             approve it.
           </p>
@@ -93,11 +93,11 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
       </div>
 
       {noResume && (
-        <div className="mb-4 rounded-md border border-attention/40 bg-attention-soft px-4 py-3 text-sm">
+        <div className="mb-4 rounded-[3px] border border-attention/30 bg-attention-soft px-4 py-3 text-sm">
           <span className="font-medium text-attention">No resume on file.</span>{" "}
           <span className="text-ink-soft">
             Applications can&apos;t be submitted without one —{" "}
-            <Link href="/onboarding" className="font-medium underline">
+            <Link href="/onboarding" className="font-medium text-ink underline decoration-line underline-offset-2">
               upload your resume
             </Link>{" "}
             to unlock submissions.
@@ -108,66 +108,85 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
       {!matchingPending && <FeedFilters />}
 
       {matchingPending ? (
-        <div className={`${cardCls} p-8 text-center`}>
+        <div className={`${cardCls} p-10 text-center`}>
           <AutoRefresh />
-          <p className="font-mono text-sm text-accent">matching in progress…</p>
-          <p className="mt-2 text-sm text-ink-soft">
+          <p className="label-mono text-accent">matching in progress…</p>
+          <p className="mx-auto mt-3 max-w-md text-sm text-ink-soft">
             We&apos;re reading your profile against every open job. This takes about a minute after you
-            save your <Link href="/profile" className="underline">profile</Link> and{" "}
-            <Link href="/preferences" className="underline">preferences</Link> — this page refreshes
+            save your <Link href="/profile" className="underline decoration-line underline-offset-2">profile</Link> and{" "}
+            <Link href="/preferences" className="underline decoration-line underline-offset-2">preferences</Link> — this page refreshes
             itself.
           </p>
-          <p className="mt-2 text-xs text-ink-soft/70">
+          <p className="mx-auto mt-2 max-w-md text-xs text-ink-faint">
             Still here after a few minutes? Your criteria may be too narrow — try widening your{" "}
-            <Link href="/preferences" className="underline">preferences</Link>.
+            <Link href="/preferences" className="underline decoration-line underline-offset-2">preferences</Link>.
           </p>
         </div>
       ) : matches.length === 0 ? (
-        <div className={`${cardCls} p-8 text-center`}>
+        <div className={`${cardCls} p-10 text-center`}>
           <p className="text-sm font-medium text-ink">
             {filtered ? "No matches for these filters" : "No unqueued matches right now"}
           </p>
-          <p className="mt-2 text-sm text-ink-soft">
+          <p className="mx-auto mt-2 max-w-md text-sm text-ink-soft">
             {filtered
               ? "Try widening your search or clearing filters."
               : "You've queued everything that fits, or matching hasn't run since your last profile change. New jobs sync every 2 hours."}
           </p>
         </div>
       ) : (
-        <ul className="flex flex-col gap-2">
-          {matches.map((m) => (
-            <li key={m.jobs.id} className={`${cardCls} p-4 transition-colors hover:border-ink-soft/40`}>
-              <div className="flex items-start gap-4">
-                <ScoreBadge score={m.score} />
-                <div className="min-w-0 flex-1">
-                  <Link href={`/jobs/${m.jobs.id}`} className="block">
-                    <h2 className="truncate text-sm font-semibold text-ink hover:text-accent">{m.jobs.title}</h2>
-                  </Link>
-                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-soft">
-                    <span>
+        /*
+          One ruled register rather than a stack of floating cards: these rows
+          are a ranked list read top-down, and hairlines between entries make
+          the ordering legible in a way that gaps between cards don't.
+        */
+        <div className={cardCls}>
+          <div className="flex items-baseline justify-between border-b border-line px-4 py-2.5">
+            <p className="label-mono">Fit · position</p>
+            <p className="label-mono">{matches.length} shown</p>
+          </div>
+
+          <ul className="px-4">
+            {matches.map((m) => (
+              <li key={m.jobs.id} className="field-rule py-4">
+                <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+                  <ScoreBadge score={m.score} />
+
+                  <div className="min-w-0 flex-1">
+                    <Link
+                      href={`/jobs/${m.jobs.id}`}
+                      className="text-[15px] font-semibold leading-snug text-ink transition-colors hover:text-accent"
+                    >
+                      {m.jobs.title}
+                    </Link>
+
+                    <p className="mt-0.5 text-sm text-ink-soft">
                       {m.jobs.company}
-                      {m.jobs.location ? ` · ${m.jobs.location}` : ""}{" "}
-                      <span className="font-mono text-[11px] text-ink-soft/70">{m.jobs.ats_type}</span>
-                    </span>
-                    <SponsorBadge verdict={m.jobs.sponsor_verdict} />
-                  </p>
-                  {m.reason && (
-                    <p className="mt-1 text-sm text-ink-soft">
-                      <span className="font-mono text-[11px] uppercase text-accent">why this matches</span> — {m.reason}
+                      {m.jobs.location ? ` · ${m.jobs.location}` : ""}
+                      <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
+                        {m.jobs.ats_type}
+                      </span>
                     </p>
-                  )}
-                  <Link
-                    href={`/jobs/${m.jobs.id}`}
-                    className="mt-1 inline-block text-xs text-ink-soft underline decoration-line hover:text-ink"
-                  >
-                    View details
-                  </Link>
+
+                    {m.jobs.sponsor_verdict?.licensed && (
+                      <div className="mt-2">
+                        <SponsorBadge verdict={m.jobs.sponsor_verdict} />
+                      </div>
+                    )}
+
+                    {m.reason && (
+                      <div className="mt-2.5 grid grid-cols-1 gap-x-3 sm:grid-cols-[4.5rem_1fr]">
+                        <span className="label-mono pt-0.5">Why</span>
+                        <p className="text-sm text-ink-soft">{m.reason}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <QueueButton jobId={m.jobs.id} />
                 </div>
-                <QueueButton jobId={m.jobs.id} />
-              </div>
-            </li>
-          ))}
-        </ul>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );

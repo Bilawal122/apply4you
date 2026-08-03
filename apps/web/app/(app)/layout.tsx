@@ -13,16 +13,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="min-h-screen bg-paper">
       <header className="sticky top-0 z-10 border-b border-line bg-card/95 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-2.5">
-          <div className="flex items-center gap-6">
-            <Link href="/feed" className="text-sm font-bold tracking-tight text-ink">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-5 py-2.5">
+          <div className="flex min-w-0 items-center gap-5 sm:gap-7">
+            <Link href="/feed" className="shrink-0 text-[15px] font-semibold tracking-tight text-ink">
               Apply<span className="text-accent">4</span>You
             </Link>
             <NavLinks />
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             {email && (
-              <span className="hidden font-mono text-xs text-ink-soft sm:inline" title="Signed in as">
+              <span className="hidden font-mono text-xs text-ink-faint sm:inline" title="Signed in as">
                 {email}
               </span>
             )}
@@ -30,7 +30,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-5xl px-4 py-8">{children}</main>
+      <main className="mx-auto max-w-5xl px-5 py-9">{children}</main>
     </div>
   );
 }
