@@ -130,7 +130,7 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
           <p className="mx-auto mt-2 max-w-md text-sm text-ink-soft">
             {filtered
               ? "Try widening your search or clearing filters."
-              : "You've queued everything that fits, or matching hasn't run since your last profile change. New jobs sync every 2 hours."}
+              : "You've queued everything that fits, or matching hasn't run since your last profile change. New jobs appear as company boards are re-polled."}
           </p>
         </div>
       ) : (

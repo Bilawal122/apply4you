@@ -23,6 +23,24 @@ function postedAgo(postedAt: string | null): string | null {
   return null; // stale beyond ~2 weeks isn't a selling point — say nothing rather than "3 weeks ago"
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * States the index's real edition date, the way /check states the register's.
+ * This used to read "resynced every 2h" unconditionally — which was a claim
+ * about the worker's schedule, not about the data, and went false the moment
+ * sourcing paused. A page whose entire argument is "we never overstate" cannot
+ * be the one thing on the site that does.
+ */
+function syncedLabel(lastPoll: string | null): string {
+  if (!lastPoll) return "sync pending";
+  const d = new Date(lastPoll);
+  const hours = Math.floor((Date.now() - d.getTime()) / 3_600_000);
+  if (hours < 1) return "synced just now";
+  if (hours < 24) return `synced ${hours}h ago`;
+  return `synced ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
 export default async function LandingPage() {
   // Session-aware: a signed-in visitor should be recognized, not shown a
   // stranger's marketing page.
@@ -36,7 +54,7 @@ export default async function LandingPage() {
   // count. Real listings, not a mockup: what's shown is whatever's actually
   // open right now.
   const admin = createAdminClient();
-  const [{ data: heroJobs }, { count: openJobs }] = await Promise.all([
+  const [{ data: heroJobs }, { count: openJobs }, { data: pollRow }] = await Promise.all([
     admin
       .from("jobs")
       .select("id, title, company, location, ats_type, posted_at, sponsor_verdict")
@@ -45,8 +63,16 @@ export default async function LandingPage() {
       .limit(7)
       .overrideTypes<HeroJob[]>(),
     admin.from("jobs").select("id", { count: "exact", head: true }).is("closed_at", null),
+    admin
+      .from("board_sources")
+      .select("last_polled_at")
+      .not("last_polled_at", "is", null)
+      .order("last_polled_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ last_polled_at: string }>(),
   ]);
   const jobs = heroJobs ?? [];
+  const synced = syncedLabel(pollRow?.last_polled_at ?? null);
 
   return (
     <main className="flex min-h-screen flex-col bg-paper">
@@ -184,13 +210,13 @@ export default async function LandingPage() {
             )}
 
             <p className="border-t border-line px-4 py-3 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
-              Live from the index · resynced every 2h
+              From the index · {synced}
             </p>
           </div>
 
           <p className="mt-3 px-1 text-[13px] text-ink-soft">
-            Real openings, pulled from company boards a few minutes ago. Sign up and every one of
-            them gets scored against your profile.
+            Real openings from real company job boards — not a mockup. Sign up and every one of them
+            gets scored against your profile.
           </p>
         </div>
       </section>
