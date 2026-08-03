@@ -1,12 +1,17 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { currentUsagePeriod } from "@apply4you/shared";
 import { createClient } from "@/lib/supabase/server";
+import { descriptionExcerpt } from "@/lib/text";
 import { QueueButton } from "@/components/queue-button";
-import { QueueTopButton } from "@/components/queue-top-button";
+import { AutoApplyButton } from "@/components/auto-apply-button";
 import { FeedFilters } from "@/components/feed-filters";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { ScoreBadge, SponsorBadge, cardCls } from "@/components/ui";
 import type { SponsorVerdict } from "@/lib/sponsors";
+
+/** Cards are large, so the feed shows a page of them rather than 50 rows. */
+const CARDS_SHOWN = 24;
 
 interface MatchRow {
   score: number;
@@ -19,6 +24,7 @@ interface MatchRow {
     apply_url: string;
     ats_type: string;
     posted_at: string | null;
+    requires_login: boolean;
     sponsor_verdict: SponsorVerdict | null;
   };
 }
@@ -31,13 +37,38 @@ interface FeedParams {
   sponsored?: string;
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function postedLabel(postedAt: string | null): string | null {
+  if (!postedAt) return null;
+  const d = new Date(postedAt);
+  const days = Math.floor((Date.now() - d.getTime()) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days}d ago`;
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+function Tag({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded-[2px] border border-line bg-paper px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft">
+      {children}
+    </span>
+  );
+}
+
 export default async function FeedPage({ searchParams }: { searchParams: Promise<FeedParams> }) {
   const { q, ats, minScore, remote, sponsored } = await searchParams;
   const supabase = await createClient();
 
+  // Descriptions average ~8KB (Greenhouse stores full HTML), so they are NOT
+  // selected here — pulling them for all 200 candidate matches would move
+  // ~1.6MB per feed render. They are fetched below for the cards actually shown.
   let query = supabase
     .from("job_matches")
-    .select("score, reason, jobs!inner(id, title, company, location, apply_url, ats_type, posted_at, sponsor_verdict)")
+    .select(
+      "score, reason, jobs!inner(id, title, company, location, apply_url, ats_type, posted_at, requires_login, sponsor_verdict)",
+    )
     .is("jobs.closed_at", null)
     .order("score", { ascending: false })
     .limit(200);
@@ -53,7 +84,7 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
     if (safe) query = query.or(`title.ilike.%${safe}%,company.ilike.%${safe}%`, { referencedTable: "jobs" });
   }
 
-  const [{ data: matchRows }, { data: appliedRows }, { data: profileRow }, { count: totalMatches }] =
+  const [{ data: matchRows }, { data: appliedRows }, { data: profileRow }, { count: totalMatches }, { data: sub }, { data: prefs }] =
     await Promise.all([
       query.overrideTypes<MatchRow[]>(),
       supabase.from("applications").select("job_id"),
@@ -62,6 +93,8 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
         .select("embedding, summary, resume_storage_path")
         .single<{ embedding: unknown; summary: string | null; resume_storage_path: string | null }>(),
       supabase.from("job_matches").select("job_id", { count: "exact", head: true }),
+      supabase.from("subscriptions").select("plan, applications_limit, period_start").single(),
+      supabase.from("preferences").select("daily_cap").single<{ daily_cap: number }>(),
     ]);
 
   // Brand-new account with nothing set up yet -> guide them into the wizard
@@ -72,24 +105,59 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
 
   const applied = new Set((appliedRows ?? []).map((r) => r.job_id as string));
   // `q` filters the embedded jobs to null rows on non-matches with !inner; drop those.
-  const matches = (matchRows ?? []).filter((m) => m.jobs && !applied.has(m.jobs.id)).slice(0, 50);
+  const available = (matchRows ?? []).filter((m) => m.jobs && !applied.has(m.jobs.id));
+  const matches = available.slice(0, CARDS_SHOWN);
+
+  // Second query, scoped to the visible cards only — see the note above.
+  const descriptions = new Map<string, string>();
+  if (matches.length > 0) {
+    const { data: descRows } = await supabase
+      .from("jobs")
+      .select("id, description")
+      .in("id", matches.map((m) => m.jobs.id))
+      .overrideTypes<{ id: string; description: string | null }[]>();
+    for (const row of descRows ?? []) {
+      const excerpt = descriptionExcerpt(row.description);
+      if (excerpt) descriptions.set(row.id, excerpt);
+    }
+  }
+
   // Pending covers the embed AND the match write: the embedding lands seconds
   // before job_matches rows do, and both states should read "in progress".
   const matchingPending = !profileRow?.embedding || (totalMatches ?? 0) === 0;
   const filtered = Boolean(q || ats || minScore || remote || sponsored);
   const noResume = !profileRow?.resume_storage_path;
 
+  let planRemaining = 0;
+  let planResets: string | null = null;
+  if (sub) {
+    const { start, end } = currentUsagePeriod(sub.period_start);
+    planResets = end.toLocaleDateString();
+    const { count: used } = await supabase
+      .from("applications")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "submitted")
+      .gte("submitted_at", start.toISOString());
+    planRemaining = Math.max(0, (sub.applications_limit ?? 0) - (used ?? 0));
+  }
+
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="display text-2xl text-ink">Job feed</h1>
           <p className="mt-1.5 text-sm text-ink-soft">
-            Ranked by fit with your profile. Queue the ones you want — nothing submits until you
-            approve it.
+            Ranked by fit with your profile. Nothing is submitted until you approve it.
           </p>
         </div>
-        <QueueTopButton available={matches.length} />
+        {!matchingPending && (
+          <AutoApplyButton
+            available={available.length}
+            dailyCap={prefs?.daily_cap ?? 10}
+            planRemaining={planRemaining}
+            planResets={planResets}
+          />
+        )}
       </div>
 
       {noResume && (
@@ -134,59 +202,72 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
           </p>
         </div>
       ) : (
-        /*
-          One ruled register rather than a stack of floating cards: these rows
-          are a ranked list read top-down, and hairlines between entries make
-          the ordering legible in a way that gaps between cards don't.
-        */
-        <div className={cardCls}>
-          <div className="flex items-baseline justify-between border-b border-line px-4 py-2.5">
-            <p className="label-mono">Fit · position</p>
-            <p className="label-mono">{matches.length} shown</p>
+        <>
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <p className="label-mono">
+              showing {matches.length} of {available.length}
+            </p>
           </div>
 
-          <ul className="px-4">
-            {matches.map((m) => (
-              <li key={m.jobs.id} className="field-rule py-4">
-                <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
-                  <ScoreBadge score={m.score} />
-
-                  <div className="min-w-0 flex-1">
-                    <Link
-                      href={`/jobs/${m.jobs.id}`}
-                      className="text-[15px] font-semibold leading-snug text-ink transition-colors hover:text-accent"
-                    >
-                      {m.jobs.title}
-                    </Link>
-
-                    <p className="mt-0.5 text-sm text-ink-soft">
-                      {m.jobs.company}
-                      {m.jobs.location ? ` · ${m.jobs.location}` : ""}
-                      <span className="ml-2 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
-                        {m.jobs.ats_type}
-                      </span>
-                    </p>
-
-                    {m.jobs.sponsor_verdict?.licensed && (
-                      <div className="mt-2">
-                        <SponsorBadge verdict={m.jobs.sponsor_verdict} />
-                      </div>
-                    )}
-
-                    {m.reason && (
-                      <div className="mt-2.5 grid grid-cols-1 gap-x-3 sm:grid-cols-[4.5rem_1fr]">
-                        <span className="label-mono pt-0.5">Why</span>
-                        <p className="text-sm text-ink-soft">{m.reason}</p>
-                      </div>
-                    )}
+          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {matches.map((m) => {
+              const posted = postedLabel(m.jobs.posted_at);
+              const isRemote = /remote/i.test(m.jobs.location ?? "");
+              const excerpt = descriptions.get(m.jobs.id);
+              return (
+                <li
+                  key={m.jobs.id}
+                  className={`${cardCls} flex flex-col p-4 transition-colors hover:border-ink-soft/40`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
+                      {posted ?? m.jobs.ats_type}
+                    </span>
+                    <ScoreBadge score={m.score} />
                   </div>
 
-                  <QueueButton jobId={m.jobs.id} />
-                </div>
-              </li>
-            ))}
+                  <p className="mt-2 text-sm text-ink-soft">{m.jobs.company}</p>
+                  <Link
+                    href={`/jobs/${m.jobs.id}`}
+                    className="mt-0.5 text-[15px] font-semibold leading-snug text-ink transition-colors hover:text-accent"
+                  >
+                    {m.jobs.title}
+                  </Link>
+
+                  <div className="mt-2.5 flex flex-wrap gap-1.5">
+                    {isRemote && <Tag>remote</Tag>}
+                    <Tag>{m.jobs.ats_type}</Tag>
+                    {m.jobs.requires_login && <Tag>account needed</Tag>}
+                    {m.jobs.sponsor_verdict?.licensed && <SponsorBadge verdict={m.jobs.sponsor_verdict} />}
+                  </div>
+
+                  {m.reason && (
+                    <p className="mt-2.5 text-[13px] leading-snug text-ink">
+                      <span className="label-mono">Why</span> {m.reason}
+                    </p>
+                  )}
+
+                  {excerpt && (
+                    <p className="mt-2 line-clamp-4 text-[13px] leading-snug text-ink-soft">{excerpt}</p>
+                  )}
+
+                  <div className="mt-auto flex items-end justify-between gap-3 pt-3">
+                    <span className="min-w-0 truncate text-xs text-ink-faint">{m.jobs.location ?? "—"}</span>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Link
+                        href={`/jobs/${m.jobs.id}`}
+                        className="rounded-[3px] border border-line bg-card px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-ink-soft hover:bg-paper"
+                      >
+                        Details
+                      </Link>
+                      <QueueButton jobId={m.jobs.id} />
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
-        </div>
+        </>
       )}
     </div>
   );
