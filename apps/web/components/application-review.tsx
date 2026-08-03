@@ -39,7 +39,7 @@ function isCoverLetterField(f: Field): boolean {
  * honest framing is "what we led with", not "what we generated", and the
  * omission counts are shown rather than hidden.
  */
-function TailoredCvBlock({ cv }: { cv: ResolvedCv }) {
+function TailoredCvBlock({ cv, applicationId }: { cv: ResolvedCv; applicationId: string }) {
   const [open, setOpen] = useState(false);
   const dropped = cv.omitted.roles + cv.omitted.bullets + cv.omitted.skills;
 
@@ -47,13 +47,25 @@ function TailoredCvBlock({ cv }: { cv: ResolvedCv }) {
     <div className="mb-5 rounded-[3px] border border-line bg-paper p-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="label-mono">Tailored CV</p>
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          className="font-mono text-[10px] uppercase tracking-[0.1em] text-accent hover:underline"
-        >
-          {open ? "hide" : "show what we led with"}
-        </button>
+        <div className="flex items-center gap-3">
+          {/* The document itself, not a summary of it — same markup the worker
+              turns into the PDF, so reviewing this is reviewing the artifact. */}
+          <a
+            href={`/api/applications/${applicationId}/cv`}
+            target="_blank"
+            rel="noreferrer"
+            className="font-mono text-[10px] uppercase tracking-[0.1em] text-accent hover:underline"
+          >
+            open the full CV ↗
+          </a>
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="font-mono text-[10px] uppercase tracking-[0.1em] text-ink-soft hover:text-ink hover:underline"
+          >
+            {open ? "hide" : "show what we led with"}
+          </button>
+        </div>
       </div>
 
       {cv.rationale && <p className="mt-1.5 text-[13px] text-ink">{cv.rationale}</p>}
@@ -194,7 +206,7 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
             The packet (task #40): CV, then letter, then every answer — the
             whole artifact an employer receives, in the order they'd read it.
           */}
-          {app.tailoredCv && <TailoredCvBlock cv={app.tailoredCv} />}
+          {app.tailoredCv && <TailoredCvBlock cv={app.tailoredCv} applicationId={app.id} />}
 
           <div className="mb-4 flex items-center justify-between gap-3">
             <p className="label-mono">What we&apos;ll send</p>
