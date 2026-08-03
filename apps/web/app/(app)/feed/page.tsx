@@ -5,7 +5,8 @@ import { QueueButton } from "@/components/queue-button";
 import { QueueTopButton } from "@/components/queue-top-button";
 import { FeedFilters } from "@/components/feed-filters";
 import { AutoRefresh } from "@/components/auto-refresh";
-import { ScoreBadge, cardCls } from "@/components/ui";
+import { ScoreBadge, SponsorBadge, cardCls } from "@/components/ui";
+import type { SponsorVerdict } from "@/lib/sponsors";
 
 interface MatchRow {
   score: number;
@@ -18,6 +19,7 @@ interface MatchRow {
     apply_url: string;
     ats_type: string;
     posted_at: string | null;
+    sponsor_verdict: SponsorVerdict | null;
   };
 }
 
@@ -26,15 +28,16 @@ interface FeedParams {
   ats?: string;
   minScore?: string;
   remote?: string;
+  sponsored?: string;
 }
 
 export default async function FeedPage({ searchParams }: { searchParams: Promise<FeedParams> }) {
-  const { q, ats, minScore, remote } = await searchParams;
+  const { q, ats, minScore, remote, sponsored } = await searchParams;
   const supabase = await createClient();
 
   let query = supabase
     .from("job_matches")
-    .select("score, reason, jobs!inner(id, title, company, location, apply_url, ats_type, posted_at)")
+    .select("score, reason, jobs!inner(id, title, company, location, apply_url, ats_type, posted_at, sponsor_verdict)")
     .is("jobs.closed_at", null)
     .order("score", { ascending: false })
     .limit(200);
@@ -42,6 +45,7 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
   if (minScore) query = query.gte("score", Number(minScore));
   if (ats && ["greenhouse", "lever", "ashby", "workable"].includes(ats)) query = query.eq("jobs.ats_type", ats);
   if (remote === "1") query = query.ilike("jobs.location", "%remote%");
+  if (sponsored === "1") query = query.not("jobs.sponsor_verdict", "is", null);
   if (q) {
     // Strip characters significant to PostgREST filter syntax so user input
     // can't break out of the ilike pattern and inject OR conditions.
@@ -72,7 +76,7 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
   // Pending covers the embed AND the match write: the embedding lands seconds
   // before job_matches rows do, and both states should read "in progress".
   const matchingPending = !profileRow?.embedding || (totalMatches ?? 0) === 0;
-  const filtered = Boolean(q || ats || minScore || remote);
+  const filtered = Boolean(q || ats || minScore || remote || sponsored);
   const noResume = !profileRow?.resume_storage_path;
 
   return (
@@ -139,10 +143,13 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
                   <Link href={`/jobs/${m.jobs.id}`} className="block">
                     <h2 className="truncate text-sm font-semibold text-ink hover:text-accent">{m.jobs.title}</h2>
                   </Link>
-                  <p className="mt-0.5 text-sm text-ink-soft">
-                    {m.jobs.company}
-                    {m.jobs.location ? ` · ${m.jobs.location}` : ""}{" "}
-                    <span className="font-mono text-[11px] text-ink-soft/70">{m.jobs.ats_type}</span>
+                  <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-soft">
+                    <span>
+                      {m.jobs.company}
+                      {m.jobs.location ? ` · ${m.jobs.location}` : ""}{" "}
+                      <span className="font-mono text-[11px] text-ink-soft/70">{m.jobs.ats_type}</span>
+                    </span>
+                    <SponsorBadge verdict={m.jobs.sponsor_verdict} />
                   </p>
                   {m.reason && <p className="mt-1 text-sm text-ink-soft">{m.reason}</p>}
                   <Link

@@ -63,6 +63,30 @@ export function StatusBadge({ status }: { status: string }) {
   );
 }
 
+/**
+ * Sponsor-licence badge (DECISIONS.md D5 conservative labeling: the employer
+ * HOLDS a licence on the register date — never "sponsors this role").
+ * Renders nothing when there's no verdict: absence of a match is not a claim.
+ */
+export function SponsorBadge({
+  verdict,
+}: {
+  verdict: { licensed: boolean; org_name?: string; routes?: string[]; register_date?: string } | null;
+}) {
+  if (!verdict?.licensed) return null;
+  const skilledWorker = verdict.routes?.includes("Skilled Worker");
+  return (
+    <span
+      className="inline-flex shrink-0 items-center gap-1 rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[11px] font-medium text-accent"
+      title={`${verdict.org_name ?? "This employer"} holds a Home Office sponsor licence${
+        skilledWorker ? " (Skilled Worker route)" : ""
+      } — register as of ${verdict.register_date ?? "latest refresh"}. A licence does not guarantee sponsorship for this specific role.`}
+    >
+      ✓ {skilledWorker ? "visa sponsor licence" : "sponsor licence"}
+    </span>
+  );
+}
+
 /** Fit score: mono number + a thin bar. The machine's verdict, legible at a glance. */
 export function ScoreBadge({ score }: { score: number }) {
   return (

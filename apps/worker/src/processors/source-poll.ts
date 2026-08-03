@@ -4,6 +4,7 @@ import { getAdapter, AtsHttpError } from "@apply4you/ats";
 import type { AtsType, NormalizedJob } from "@apply4you/shared";
 import { connection, queues } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
+import { refreshSponsorRegister } from "./sponsor-register.js";
 
 interface BoardSourceRow {
   id: string;
@@ -177,6 +178,7 @@ export function startSourcingWorker(): Worker {
       if (job.name === "poll-all") return pollAll();
       if (job.name === "poll-board") return pollBoard((job.data as PollBoardData).boardSourceId);
       if (job.name === "purge-closed") return purgeClosedJobs();
+      if (job.name === "refresh-sponsors") return refreshSponsorRegister();
       throw new Error(`Unknown sourcing job: ${job.name}`);
     },
     {

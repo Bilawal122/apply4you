@@ -46,7 +46,8 @@ export function FeedFilters() {
   const ats = params.get("ats") ?? "";
   const minScore = params.get("minScore") ?? "";
   const remote = params.get("remote") === "1";
-  const hasFilters = q || ats || minScore || remote;
+  const sponsored = params.get("sponsored") === "1";
+  const hasFilters = q || ats || minScore || remote || sponsored;
 
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -77,6 +78,17 @@ export function FeedFilters() {
       <label className="flex items-center gap-1.5 text-sm text-ink-soft">
         <input type="checkbox" checked={remote} onChange={(e) => setParam("remote", e.target.checked ? "1" : "")} />
         Remote only
+      </label>
+      <label
+        className="flex items-center gap-1.5 text-sm text-ink-soft"
+        title="Employers holding a Home Office sponsor licence (a licence does not guarantee sponsorship for a specific role)"
+      >
+        <input
+          type="checkbox"
+          checked={sponsored}
+          onChange={(e) => setParam("sponsored", e.target.checked ? "1" : "")}
+        />
+        Visa sponsor licence ✓
       </label>
       {hasFilters && (
         <button

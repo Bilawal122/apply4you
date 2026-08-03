@@ -4,6 +4,7 @@ import { registerUsageSink } from "./usage.js";
 import { connection, queues } from "./queues.js";
 import { supabaseAdmin } from "./supabase.js";
 import { schedulePolling, scheduleRetention, startSourcingWorker } from "./processors/source-poll.js";
+import { scheduleSponsorRefresh } from "./processors/sponsor-register.js";
 import { startEmbeddingWorker, startProfileEmbeddingWorker } from "./processors/embed.js";
 import { scheduleNightlyMatching, startMatchingWorker } from "./processors/match.js";
 import { startResolveWorker } from "./processors/resolve.js";
@@ -137,8 +138,9 @@ async function main(): Promise<void> {
 
   await schedulePolling();
   await scheduleRetention();
+  await scheduleSponsorRefresh();
   const sourcing = startSourcingWorker();
-  console.log("[worker] sourcing worker started (poll-all every 2h, retention purge daily)");
+  console.log("[worker] sourcing worker started (poll-all every 2h, retention purge daily, sponsor register weekly)");
 
   await scheduleNightlyMatching();
   const embedding = startEmbeddingWorker();
