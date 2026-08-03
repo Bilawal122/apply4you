@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import type { Field, ResolvedValues, UnresolvedField } from "@apply4you/shared";
+import type { Field, ResolvedCv, ResolvedValues, UnresolvedField } from "@apply4you/shared";
 import { approveApplication, saveApplicationFields, skipApplication } from "@/app/(app)/applications/actions";
 import {
   NeedsYouStamp,
@@ -24,10 +24,71 @@ export interface ReviewApp {
   resolvedFields: ResolvedValues;
   coverLetter: string | null;
   unresolvedFields: UnresolvedField[];
+  /** Per-job tailored CV, already resolved against the live profile (task #40). */
+  tailoredCv: ResolvedCv | null;
 }
 
 function isCoverLetterField(f: Field): boolean {
   return f.type === "textarea" && /cover.?letter/i.test(`${f.id} ${f.label}`);
+}
+
+/**
+ * The tailored CV, shown as what it actually is: a re-ordering of the user's
+ * own experience for this job. Every line here is text they wrote — the model
+ * only chose which lines and in what order (see resolveTailoredCv). So the
+ * honest framing is "what we led with", not "what we generated", and the
+ * omission counts are shown rather than hidden.
+ */
+function TailoredCvBlock({ cv }: { cv: ResolvedCv }) {
+  const [open, setOpen] = useState(false);
+  const dropped = cv.omitted.roles + cv.omitted.bullets + cv.omitted.skills;
+
+  return (
+    <div className="mb-5 rounded-[3px] border border-line bg-paper p-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="label-mono">Tailored CV</p>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="font-mono text-[10px] uppercase tracking-[0.1em] text-accent hover:underline"
+        >
+          {open ? "hide" : "show what we led with"}
+        </button>
+      </div>
+
+      {cv.rationale && <p className="mt-1.5 text-[13px] text-ink">{cv.rationale}</p>}
+
+      <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-ink-faint">
+        your own wording, reordered for this job
+        {dropped > 0 ? ` · ${dropped} item${dropped === 1 ? "" : "s"} held back` : ""}
+      </p>
+
+      {open && (
+        <div className="mt-3 border-t border-line pt-3">
+          {cv.summary && <p className="mb-3 text-[13px] leading-relaxed text-ink">{cv.summary}</p>}
+          {cv.roles.map((r, i) => (
+            <div key={`${r.company}-${i}`} className="mb-2.5">
+              <p className="text-[13px] font-medium text-ink">
+                {r.title} — {r.company}
+              </p>
+              <ul className="mt-0.5 list-disc pl-4">
+                {r.bullets.map((b, bi) => (
+                  <li key={bi} className="text-[13px] text-ink-soft">
+                    {b}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          {cv.skills.length > 0 && (
+            <p className="mt-2 text-[13px] text-ink-soft">
+              <span className="label-mono">Skills</span> {cv.skills.join(" · ")}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ApplicationReview({ app }: { app: ReviewApp }) {
@@ -129,6 +190,12 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
 
       {expanded && (
         <div className="border-t border-line px-4 py-4">
+          {/*
+            The packet (task #40): CV, then letter, then every answer — the
+            whole artifact an employer receives, in the order they'd read it.
+          */}
+          {app.tailoredCv && <TailoredCvBlock cv={app.tailoredCv} />}
+
           <div className="mb-4 flex items-center justify-between gap-3">
             <p className="label-mono">What we&apos;ll send</p>
             <a

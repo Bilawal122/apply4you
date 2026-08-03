@@ -1,10 +1,20 @@
 import Link from "next/link";
-import type { Field, ResolvedValues, UnresolvedField } from "@apply4you/shared";
+import {
+  TailoredCvSchema,
+  resolveTailoredCv,
+  type Field,
+  type ResolvedValues,
+  type UnresolvedField,
+} from "@apply4you/shared";
 import { createClient } from "@/lib/supabase/server";
+import { rowToProfile, type ProfileRow } from "@/lib/profile";
 import { ApplicationReview, type ReviewApp } from "@/components/application-review";
 import { ApproveAllButton } from "@/components/approve-all-button";
 import { LiveFeed } from "@/components/live-feed";
 import { StatusBadge } from "@/components/ui";
+
+const SELECT_COLS =
+  "id, status, form_schema, resolved_fields, cover_letter, tailored_cv, unresolved_fields, created_at, submitted_at, failure_reason, jobs!inner(title, company, apply_url)";
 
 interface AppRow {
   id: string;
@@ -12,6 +22,7 @@ interface AppRow {
   form_schema: Field[] | null;
   resolved_fields: ResolvedValues;
   cover_letter: string | null;
+  tailored_cv: unknown;
   unresolved_fields: UnresolvedField[];
   created_at: string;
   submitted_at: string | null;
@@ -25,30 +36,39 @@ export default async function ApplicationsPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: pendingRows }, { data: recentRows }, { data: eventRows }] = await Promise.all([
-    supabase
-      .from("applications")
-      .select(
-        "id, status, form_schema, resolved_fields, cover_letter, unresolved_fields, created_at, submitted_at, failure_reason, jobs!inner(title, company, apply_url)",
-      )
-      .in("status", ["draft", "needs_review"])
-      .order("created_at", { ascending: true })
-      .overrideTypes<AppRow[]>(),
-    supabase
-      .from("applications")
-      .select(
-        "id, status, form_schema, resolved_fields, cover_letter, unresolved_fields, created_at, submitted_at, failure_reason, jobs!inner(title, company, apply_url)",
-      )
-      .in("status", ["approved", "submitting", "submitted", "failed", "skipped", "needs_manual_verification"])
-      .order("created_at", { ascending: false })
-      .limit(25)
-      .overrideTypes<AppRow[]>(),
-    supabase
-      .from("application_events")
-      .select("id, application_id, status, message, created_at")
-      .order("created_at", { ascending: false })
-      .limit(15),
-  ]);
+  const [{ data: pendingRows }, { data: recentRows }, { data: eventRows }, { data: profileRow }] =
+    await Promise.all([
+      supabase
+        .from("applications")
+        .select(SELECT_COLS)
+        .in("status", ["draft", "needs_review"])
+        .order("created_at", { ascending: true })
+        .overrideTypes<AppRow[]>(),
+      supabase
+        .from("applications")
+        .select(SELECT_COLS)
+        .in("status", ["approved", "submitting", "submitted", "failed", "skipped", "needs_manual_verification"])
+        .order("created_at", { ascending: false })
+        .limit(25)
+        .overrideTypes<AppRow[]>(),
+      supabase
+        .from("application_events")
+        .select("id, application_id, status, message, created_at")
+        .order("created_at", { ascending: false })
+        .limit(15),
+      supabase.from("profiles").select("*").single<ProfileRow>(),
+    ]);
+
+  // The tailored CV is stored as a SELECTION of profile indices, never as
+  // rendered text — so it's resolved against the live profile here. Editing
+  // your profile updates every pending packet for free, and a stored row can
+  // never contain experience you didn't write.
+  const profile = profileRow ? rowToProfile(profileRow) : null;
+  const resolveCv = (raw: unknown): ReviewApp["tailoredCv"] => {
+    if (!profile || !raw) return null;
+    const parsed = TailoredCvSchema.safeParse(raw);
+    return parsed.success ? resolveTailoredCv(profile, parsed.data) : null;
+  };
 
   const pending = pendingRows ?? [];
   const recent = recentRows ?? [];
@@ -64,6 +84,7 @@ export default async function ApplicationsPage() {
     resolvedFields: row.resolved_fields ?? {},
     coverLetter: row.cover_letter,
     unresolvedFields: row.unresolved_fields ?? [],
+    tailoredCv: resolveCv(row.tailored_cv),
   });
 
   return (

@@ -9,7 +9,7 @@ import {
   type AtsType,
 } from "@apply4you/shared";
 import { getAdapter, type JobRef } from "@apply4you/ats";
-import { resolveDeterministic, resolveFieldsWithLlm, generateCoverLetter } from "@apply4you/ai";
+import { resolveDeterministic, resolveFieldsWithLlm, generateCoverLetter, tailorCv } from "@apply4you/ai";
 import { connection } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
 import { loadProfileAndPrefs } from "../profile-data.js";
@@ -105,7 +105,20 @@ async function resolveApplication(applicationId: string): Promise<void> {
     }
   }
 
-  // 5. Unresolved bookkeeping (FR-16).
+  // 5. Tailored CV selection (task #40). Best-effort: a failure here must never
+  //    cost the user an otherwise-complete application, so it degrades to null
+  //    and the packet view falls back to the untailored profile.
+  let tailoredCv = null;
+  try {
+    tailoredCv = await tailorCv({
+      profile,
+      job: { title: jobRow.title, company: jobRow.company, description: jobRow.description ?? "" },
+    });
+  } catch (err) {
+    console.error(`[resolve] ${applicationId}: tailored CV failed (continuing):`, String(err).slice(0, 200));
+  }
+
+  // 6. Unresolved bookkeeping (FR-16).
   const unresolved: UnresolvedField[] = workable
     .filter((f) => f.type !== "file" && resolvedFields[f.id] === null)
     .map((f) => ({ id: f.id, label: f.label, required: f.required }));
@@ -134,6 +147,7 @@ async function resolveApplication(applicationId: string): Promise<void> {
       resolved_fields: resolvedFields,
       unresolved_fields: unresolved,
       cover_letter: coverLetter,
+      tailored_cv: tailoredCv,
       status,
     })
     .eq("id", applicationId);
