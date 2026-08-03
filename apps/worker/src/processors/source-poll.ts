@@ -59,6 +59,9 @@ interface StoredJob {
   requires_login: boolean | null;
   posted_at: string | null;
   closed_at: string | null;
+  salary_min: number | null;
+  salary_max: number | null;
+  salary_summary: string | null;
 }
 
 const sameTime = (a: string | null, b: string | null): boolean =>
@@ -94,6 +97,10 @@ function isUnchanged(prev: StoredJob, next: Record<string, unknown>): boolean {
     prev.apply_url === next.apply_url &&
     prev.requires_login === next.requires_login &&
     sameTime(prev.posted_at, (next.posted_at as string | null) ?? null) &&
+    // A salary appearing (or being revised) is a real change worth writing.
+    prev.salary_min === ((next.salary_min as number | null) ?? null) &&
+    prev.salary_max === ((next.salary_max as number | null) ?? null) &&
+    prev.salary_summary === ((next.salary_summary as string | null) ?? null) &&
     prev.closed_at === null // a previously-closed posting must be written to reopen it
   );
 }
@@ -174,7 +181,7 @@ async function pollBoard(boardSourceId: string): Promise<void> {
   for (const ids of chunk(externalIds, ID_CHUNK)) {
     const { data: existingRows, error } = await db
       .from("jobs")
-      .select("external_id, title, company, location, apply_url, requires_login, posted_at, closed_at")
+      .select("external_id, title, company, location, apply_url, requires_login, posted_at, closed_at, salary_min, salary_max, salary_summary")
       .eq("ats_type", source.ats_type)
       .in("external_id", ids);
     if (error) throw new Error(`jobs existence check failed: ${error.message}`);
@@ -206,6 +213,12 @@ async function pollBoard(boardSourceId: string): Promise<void> {
       apply_url: finalJob.applyUrl,
       requires_login: finalJob.requiresLogin,
       posted_at: finalJob.postedAt,
+      salary_min: finalJob.salary?.min ?? null,
+      salary_max: finalJob.salary?.max ?? null,
+      salary_currency: finalJob.salary?.currency ?? null,
+      salary_period: finalJob.salary?.period ?? null,
+      salary_summary: finalJob.salary?.summary ?? null,
+      salary_source: finalJob.salary?.source ?? null,
       closed_at: null, // reopened if it had vanished
       // No `raw` payload: it cost 96MB of TOAST at 18k jobs, was rewritten
       // every poll, and nothing ever read it (adapters fetch forms live).

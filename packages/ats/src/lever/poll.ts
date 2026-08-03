@@ -16,6 +16,15 @@ interface LeverPosting {
   lists?: Array<{ text: string; content: string }>;
   country?: string;
   workplaceType?: string;
+  /** Verified live 2026-08: {"min":80000,"max":95000,"currency":"USD","interval":"per-year-salary"} */
+  salaryRange?: { min?: number; max?: number; currency?: string; interval?: string };
+}
+
+/** Lever's interval strings look like "per-year-salary" / "per-hour-wage". */
+function leverPeriod(interval?: string): string | null {
+  if (!interval) return null;
+  const m = /per-(year|month|week|day|hour)/i.exec(interval);
+  return m ? m[1]!.toLowerCase() : null;
 }
 
 export async function pollLever(slug: string, opts?: PollOptions): Promise<NormalizedJob[]> {
@@ -44,6 +53,18 @@ export async function pollLever(slug: string, opts?: PollOptions): Promise<Norma
       applyUrl: p.applyUrl ?? `${p.hostedUrl}/apply`,
       requiresLogin: false,
       postedAt: p.createdAt ? new Date(p.createdAt).toISOString() : null,
+      // Only when Lever actually carries a figure; never inferred from prose.
+      salary:
+        p.salaryRange && (p.salaryRange.min != null || p.salaryRange.max != null)
+          ? {
+              min: p.salaryRange.min ?? null,
+              max: p.salaryRange.max ?? null,
+              currency: p.salaryRange.currency ?? null,
+              period: leverPeriod(p.salaryRange.interval),
+              summary: null,
+              source: "lever.salaryRange",
+            }
+          : null,
       raw: p,
     };
   });

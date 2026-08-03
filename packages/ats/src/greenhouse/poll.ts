@@ -30,6 +30,9 @@ export async function pollGreenhouse(slug: string, opts?: PollOptions): Promise<
     applyUrl: job.absolute_url,
     requiresLogin: false,
     postedAt: job.first_published ?? job.updated_at ?? null,
+      // Greenhouse publishes no compensation on either the board list or the
+      // single-job endpoint (verified 2026-08, metadata was null too).
+      salary: null,
     raw: job,
   }));
 }

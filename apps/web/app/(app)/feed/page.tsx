@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { currentUsagePeriod } from "@apply4you/shared";
 import { createClient } from "@/lib/supabase/server";
 import { descriptionExcerpt } from "@/lib/text";
+import { formatSalary } from "@/lib/salary";
 import { QueueButton } from "@/components/queue-button";
 import { AutoApplyButton } from "@/components/auto-apply-button";
 import { FeedFilters } from "@/components/feed-filters";
@@ -25,6 +26,11 @@ interface MatchRow {
     ats_type: string;
     posted_at: string | null;
     requires_login: boolean;
+    salary_min: number | null;
+    salary_max: number | null;
+    salary_currency: string | null;
+    salary_period: string | null;
+    salary_summary: string | null;
     sponsor_verdict: SponsorVerdict | null;
   };
 }
@@ -67,7 +73,7 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
   let query = supabase
     .from("job_matches")
     .select(
-      "score, reason, jobs!inner(id, title, company, location, apply_url, ats_type, posted_at, requires_login, sponsor_verdict)",
+      "score, reason, jobs!inner(id, title, company, location, apply_url, ats_type, posted_at, requires_login, sponsor_verdict, salary_min, salary_max, salary_currency, salary_period, salary_summary)",
     )
     .is("jobs.closed_at", null)
     .order("score", { ascending: false })
@@ -252,7 +258,17 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
                   )}
 
                   <div className="mt-auto flex items-end justify-between gap-3 pt-3">
-                    <span className="min-w-0 truncate text-xs text-ink-faint">{m.jobs.location ?? "—"}</span>
+                    <span className="flex min-w-0 flex-col gap-0.5">
+                      {/* Employer-published only. Never estimated — see lib/salary.ts. */}
+                      {formatSalary(m.jobs) ? (
+                        <span className="truncate font-mono text-xs font-medium text-ink">{formatSalary(m.jobs)}</span>
+                      ) : (
+                        <span className="truncate font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
+                          salary not stated
+                        </span>
+                      )}
+                      <span className="min-w-0 truncate text-xs text-ink-faint">{m.jobs.location ?? "—"}</span>
+                    </span>
                     <div className="flex shrink-0 items-center gap-2">
                       <Link
                         href={`/jobs/${m.jobs.id}`}

@@ -41,6 +41,8 @@ export async function pollWorkable(slug: string, opts?: PollOptions): Promise<No
       applyUrl: `https://apply.workable.com/${slug}/j/${job.shortcode}/`,
       requiresLogin: false,
       postedAt: job.published_on ? `${job.published_on}T00:00:00Z` : null,
+      // Workable's widget endpoint carries no compensation field.
+      salary: null,
       raw: job,
     };
   });
