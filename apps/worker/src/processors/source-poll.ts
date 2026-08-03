@@ -2,7 +2,7 @@ import { Worker, type Job } from "bullmq";
 import { QUEUES } from "@apply4you/shared";
 import { getAdapter, AtsHttpError } from "@apply4you/ats";
 import type { AtsType, NormalizedJob } from "@apply4you/shared";
-import { connection, queues } from "../queues.js";
+import { queues, workerConnection } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
 import { refreshSponsorRegister } from "./sponsor-register.js";
 
@@ -304,7 +304,7 @@ export function startSourcingWorker(): Worker {
       throw new Error(`Unknown sourcing job: ${job.name}`);
     },
     {
-      connection,
+      connection: workerConnection(),
       concurrency: 4,
       limiter: { max: 60, duration: 60_000 },
     },

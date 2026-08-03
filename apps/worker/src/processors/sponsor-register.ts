@@ -1,6 +1,6 @@
 import { Worker, type Job } from "bullmq";
 import { QUEUES } from "@apply4you/shared";
-import { connection, queues } from "../queues.js";
+import { queues } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
 
 /**

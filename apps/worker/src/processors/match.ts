@@ -1,7 +1,7 @@
 import { Worker, type Job } from "bullmq";
 import { QUEUES } from "@apply4you/shared";
 import { generateMatchReasons } from "@apply4you/ai";
-import { connection, queues } from "../queues.js";
+import { queues, workerConnection } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
 import { loadProfileAndPrefs } from "../profile-data.js";
 
@@ -103,6 +103,6 @@ export function startMatchingWorker(): Worker {
       if (job.name === "match-all") return matchAll();
       throw new Error(`Unknown matching job: ${job.name}`);
     },
-    { connection, concurrency: 2 },
+    { connection: workerConnection(), concurrency: 2 },
   );
 }

@@ -14,7 +14,7 @@ import {
   type SubmitResult,
 } from "@apply4you/shared";
 import { getAdapter, type JobRef, type LocalFile } from "@apply4you/ats";
-import { connection } from "../queues.js";
+import { workerConnection } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
 import { withBrowserContext } from "../browser/pool.js";
 import { notifyFailed, notifySubmitted } from "../notify.js";
@@ -381,7 +381,7 @@ export function startSubmitWorkers(): Worker[] {
         submitQueueFor(atsType),
         async (job: Job) => submitApplication((job.data as SubmitData).applicationId),
         {
-          connection,
+          connection: workerConnection(),
           concurrency: 1, // one browser submission at a time per ATS
           // DECISIONS.md D3: minutes apart, not seconds — 1 per 3min per ATS
           // (plus 10-45s jitter inside the processor).

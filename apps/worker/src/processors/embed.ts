@@ -1,7 +1,7 @@
 import { Worker, type Job } from "bullmq";
 import { QUEUES } from "@apply4you/shared";
 import { embedJob, embedProfile, jobEmbeddingText, profileEmbeddingText } from "@apply4you/ai";
-import { connection, queues } from "../queues.js";
+import { queues, workerConnection } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
 import { loadProfileAndPrefs } from "../profile-data.js";
 
@@ -63,7 +63,7 @@ export function startEmbeddingWorker(): Worker {
       throw new Error(`Unknown embedding job: ${job.name}`);
     },
     {
-      connection,
+      connection: workerConnection(),
       concurrency: 4,
       limiter: { max: 90, duration: 60_000 }, // leave RPM headroom for profile embeds
     },
@@ -78,6 +78,6 @@ export function startProfileEmbeddingWorker(): Worker {
       if (job.name === "embed-profile") return embedOneProfile((job.data as EmbedProfileData).userId);
       throw new Error(`Unknown profile-embedding job: ${job.name}`);
     },
-    { connection, concurrency: 2 },
+    { connection: workerConnection(), concurrency: 2 },
   );
 }

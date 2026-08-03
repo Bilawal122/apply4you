@@ -10,7 +10,7 @@ import {
 } from "@apply4you/shared";
 import { getAdapter, type JobRef } from "@apply4you/ats";
 import { resolveDeterministic, resolveFieldsWithLlm, generateCoverLetter, tailorCv } from "@apply4you/ai";
-import { connection } from "../queues.js";
+import { workerConnection } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
 import { loadProfileAndPrefs } from "../profile-data.js";
 
@@ -192,6 +192,6 @@ export function startResolveWorker(): Worker {
         throw err;
       }
     },
-    { connection, concurrency: 3, limiter: { max: 30, duration: 60_000 } },
+    { connection: workerConnection(), concurrency: 3, limiter: { max: 30, duration: 60_000 } },
   );
 }
