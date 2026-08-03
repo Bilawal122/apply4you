@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { ProfileSchema, PreferencesSchema } from "@apply4you/shared";
+import { LIBRARY_QUESTIONS, ProfileSchema, PreferencesSchema } from "@apply4you/shared";
 import { deriveSummary } from "@apply4you/ai";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -250,4 +250,38 @@ export async function queueApplication(jobId: string): Promise<{ error?: string 
   revalidatePath("/feed", "page");
   revalidatePath("/applications", "page");
   return {};
+}
+
+/**
+ * Answer Library (task #31). Only keys we define are stored, and blanks are
+ * dropped rather than saved as empty strings — an absent answer must stay
+ * absent so the field still parks for review instead of submitting "".
+ */
+export async function saveAnswerLibrary(_prev: SaveState, formData: FormData): Promise<SaveState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in" };
+
+  let incoming: Record<string, unknown>;
+  try {
+    incoming = JSON.parse(String(formData.get("answers"))) as Record<string, unknown>;
+  } catch {
+    return { error: "Invalid answers data" };
+  }
+
+  const allowed = new Set(LIBRARY_QUESTIONS.map((q) => q.key));
+  const answers: Record<string, string> = {};
+  for (const [key, value] of Object.entries(incoming)) {
+    if (!allowed.has(key) || typeof value !== "string") continue;
+    const trimmed = value.trim().slice(0, 2000);
+    if (trimmed) answers[key] = trimmed;
+  }
+
+  const { error } = await supabase.from("profiles").update({ answer_library: answers }).eq("user_id", user.id);
+  if (error) return { error: error.message };
+
+  revalidatePath("/preferences", "page");
+  return { ok: true };
 }

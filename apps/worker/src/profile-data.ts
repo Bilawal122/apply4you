@@ -5,7 +5,14 @@ import { supabaseAdmin } from "./supabase.js";
 /** Loads and validates a user's profile + preferences (worker-side, service role). */
 export async function loadProfileAndPrefs(
   userId: string,
-): Promise<{ profile: Profile; preferences: Preferences; resumeStoragePath: string | null; resumeFilename: string | null }> {
+): Promise<{
+  profile: Profile;
+  preferences: Preferences;
+  /** Answer Library (task #31): user-authored answers a CV can't contain. */
+  answerLibrary: Record<string, string>;
+  resumeStoragePath: string | null;
+  resumeFilename: string | null;
+}> {
   const db = supabaseAdmin();
 
   const [{ data: p }, { data: prefs }] = await Promise.all([
@@ -46,6 +53,7 @@ export async function loadProfileAndPrefs(
   return {
     profile,
     preferences,
+    answerLibrary: (p.answer_library ?? {}) as Record<string, string>,
     resumeStoragePath: p.resume_storage_path,
     resumeFilename: p.resume_filename,
   };

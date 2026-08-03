@@ -3,6 +3,7 @@ import {
   QUEUES,
   isDemographicField,
   FILLABLE_FIELD_TYPES,
+  resolveFromLibrary,
   type Field,
   type ResolvedValues,
   type UnresolvedField,
@@ -64,7 +65,7 @@ async function resolveApplication(applicationId: string): Promise<void> {
     board_sources: { slug: string } | null;
   };
 
-  const { profile } = await loadProfileAndPrefs(app.user_id);
+  const { profile, answerLibrary } = await loadProfileAndPrefs(app.user_id);
   const adapter = getAdapter(jobRow.ats_type);
   const jobRef: JobRef = {
     atsType: jobRow.ats_type,
@@ -81,13 +82,30 @@ async function resolveApplication(applicationId: string): Promise<void> {
   const coverLetterField = workable.find(isCoverLetterField);
   const resolvable = workable.filter((f) => !isCoverLetterField(f));
 
-  // 3. Deterministic pass (FR-12) then one batched LLM call (FR-13).
+  // 3. Deterministic pass (FR-12), then the user's own saved answers, then one
+  //    batched LLM call (FR-13) for whatever is still open.
+  //
+  //    The library sits BEFORE the model on purpose: these are questions a CV
+  //    can never answer (expected salary, notice period, sponsorship), so the
+  //    model would null them and park the application. A saved answer is the
+  //    user's own words, matched by deterministic patterns — it removes a
+  //    needs_review AND saves a model call.
   const { resolved: deterministic, remaining } = resolveDeterministic(resolvable, profile);
+
+  const fromLibrary = resolveFromLibrary(remaining, answerLibrary);
+  const stillOpen = remaining.filter((f) => !(f.id in fromLibrary));
+
   const llmResolved = await resolveFieldsWithLlm(
     { profile, job: { title: jobRow.title, company: jobRow.company, description: jobRow.description ?? "" } },
-    remaining,
+    stillOpen,
   );
-  const resolvedFields: ResolvedValues = { ...deterministic, ...llmResolved };
+  const resolvedFields: ResolvedValues = { ...deterministic, ...fromLibrary, ...llmResolved };
+
+  // Provenance recorded at resolve time, never inferred at render time.
+  const answerSources: Record<string, string> = {};
+  for (const id of Object.keys(deterministic)) answerSources[id] = "profile";
+  for (const id of Object.keys(fromLibrary)) answerSources[id] = "library";
+  for (const [id, v] of Object.entries(llmResolved)) if (v !== null) answerSources[id] = "ai";
 
   // 4. Cover letter (FR-17), only when the form asks for one.
   let coverLetter = "";
@@ -148,6 +166,7 @@ async function resolveApplication(applicationId: string): Promise<void> {
       unresolved_fields: unresolved,
       cover_letter: coverLetter,
       tailored_cv: tailoredCv,
+      answer_sources: answerSources,
       status,
     })
     .eq("id", applicationId);
@@ -163,7 +182,7 @@ async function resolveApplication(applicationId: string): Promise<void> {
   );
 
   console.log(
-    `[resolve] ${applicationId}: ${formSchema.length} fields, ${Object.values(resolvedFields).filter((v) => v !== null).length} resolved, ${unresolved.length} unresolved -> ${status}`,
+    `[resolve] ${applicationId}: ${formSchema.length} fields, ${Object.values(resolvedFields).filter((v) => v !== null).length} resolved (${Object.keys(fromLibrary).length} from your answer library), ${unresolved.length} unresolved -> ${status}`,
   );
 }
 
