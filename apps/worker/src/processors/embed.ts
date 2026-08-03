@@ -8,17 +8,33 @@ import { loadProfileAndPrefs } from "../profile-data.js";
 type EmbedJobData = { jobId: string };
 type EmbedProfileData = { userId: string };
 
+/*
+ * Vectors live in `job_embeddings`, not on `jobs` (migration 0015). Keeping the
+ * HNSW index off the jobs table is what makes sourcing viable: a row rewrite on
+ * jobs used to cost ~198ms because every rewrite re-inserted into the vector
+ * graph, and it now costs ~6ms.
+ */
 async function embedOneJob(jobId: string): Promise<void> {
   const db = supabaseAdmin();
+
+  const { data: already } = await db
+    .from("job_embeddings")
+    .select("job_id")
+    .eq("job_id", jobId)
+    .maybeSingle();
+  if (already) return;
+
   const { data: job } = await db
     .from("jobs")
-    .select("id, title, company, location, description, embedding")
+    .select("id, title, company, location, description")
     .eq("id", jobId)
     .single();
-  if (!job || job.embedding) return;
+  if (!job) return;
 
   const vector = await embedJob(jobEmbeddingText(job));
-  const { error } = await db.from("jobs").update({ embedding: JSON.stringify(vector) }).eq("id", jobId);
+  const { error } = await db
+    .from("job_embeddings")
+    .upsert({ job_id: jobId, embedding: JSON.stringify(vector) }, { onConflict: "job_id" });
   if (error) throw new Error(`embedding update failed: ${error.message}`);
 }
 

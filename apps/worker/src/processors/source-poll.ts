@@ -260,12 +260,14 @@ async function pollBoard(boardSourceId: string): Promise<void> {
   // New jobs need embeddings (consumed by the Phase 3 processor).
   const newIds = polled.filter((j) => !existing.has(j.externalId)).map((j) => j.externalId);
   for (const ids of chunk(newIds, ID_CHUNK)) {
+    // No "has no embedding yet" filter needed: these ids weren't in `known`, so
+    // we've never stored them before. embedOneJob re-checks job_embeddings
+    // anyway, so a redundant enqueue is a cheap no-op.
     const { data: newRows, error } = await db
       .from("jobs")
       .select("id")
       .eq("ats_type", source.ats_type)
-      .in("external_id", ids)
-      .is("embedding", null);
+      .in("external_id", ids);
     if (error) throw new Error(`new-jobs query failed: ${error.message}`);
     // addBulk, not one add per job: a 700-job board was 700 sequential round trips.
     await queues.embedding.addBulk(
