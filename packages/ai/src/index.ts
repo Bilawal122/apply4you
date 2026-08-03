@@ -6,3 +6,4 @@ export * from "./prompts/summary.js";
 export * from "./prompts/match-reason.js";
 export * from "./prompts/field-resolution.js";
 export * from "./prompts/cover-letter.js";
+export * from "./prompts/tailor-cv.js";
