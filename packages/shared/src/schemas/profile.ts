@@ -34,10 +34,15 @@ export const ProfileSchema = z.object({
   education: z.array(EducationEntrySchema),
   skills: z.array(z.string()),
   summary: z.string(),
+  /** User-authored context the AI can't get from a CV: goals, constraints,
+   *  things to always mention. Fed into every prompt that stringifies the
+   *  whole profile (field resolution, cover letter) — never inferred from
+   *  the resume parse, so it's excluded from ParsedResumeSchema below. */
+  additionalInfo: z.string(),
 });
 
 /** What the resume parser is allowed to return: everything optional/empty when absent. */
-export const ParsedResumeSchema = ProfileSchema.omit({ summary: true }).partial();
+export const ParsedResumeSchema = ProfileSchema.omit({ summary: true, additionalInfo: true }).partial();
 
 export type WorkHistoryEntry = z.infer<typeof WorkHistoryEntrySchema>;
 export type EducationEntry = z.infer<typeof EducationEntrySchema>;

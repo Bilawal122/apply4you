@@ -151,7 +151,11 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
                     </span>
                     <SponsorBadge verdict={m.jobs.sponsor_verdict} />
                   </p>
-                  {m.reason && <p className="mt-1 text-sm text-ink-soft">{m.reason}</p>}
+                  {m.reason && (
+                    <p className="mt-1 text-sm text-ink-soft">
+                      <span className="font-mono text-[11px] uppercase text-accent">why this matches</span> — {m.reason}
+                    </p>
+                  )}
                   <Link
                     href={`/jobs/${m.jobs.id}`}
                     className="mt-1 inline-block text-xs text-ink-soft underline decoration-line hover:text-ink"

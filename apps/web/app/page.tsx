@@ -1,15 +1,26 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { SponsorBadge } from "@/components/ui";
+import type { SponsorVerdict } from "@/lib/sponsors";
 
-function MockField({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div>
-      <p className="text-[11px] font-medium text-ink-soft">{label}</p>
-      <p className={`mt-0.5 rounded border border-line bg-paper px-2 py-1 text-xs text-ink ${mono ? "font-mono" : ""}`}>
-        {value}
-      </p>
-    </div>
-  );
+interface HeroJob {
+  id: string;
+  title: string;
+  company: string;
+  location: string | null;
+  ats_type: string;
+  posted_at: string | null;
+  sponsor_verdict: SponsorVerdict | null;
+}
+
+function postedAgo(postedAt: string | null): string | null {
+  if (!postedAt) return null;
+  const days = Math.floor((Date.now() - new Date(postedAt).getTime()) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days === 1) return "1 day ago";
+  if (days < 14) return `${days} days ago`;
+  return null; // stale beyond ~2 weeks isn't a selling point — say nothing rather than "3 weeks ago"
 }
 
 export default async function LandingPage() {
@@ -19,6 +30,23 @@ export default async function LandingPage() {
   const { data } = await supabase.auth.getClaims();
   const signedIn = Boolean(data?.claims);
   const email = typeof data?.claims?.email === "string" ? data.claims.email : null;
+
+  // `jobs` RLS is authenticated-only, so a logged-out visitor needs the admin
+  // client to see real openings here — same pattern as /check's live-jobs
+  // count. Real listings, not a mockup: what's shown is whatever's actually
+  // open right now.
+  const admin = createAdminClient();
+  const [{ data: heroJobs }, { count: openJobs }] = await Promise.all([
+    admin
+      .from("jobs")
+      .select("id, title, company, location, ats_type, posted_at, sponsor_verdict")
+      .is("closed_at", null)
+      .order("posted_at", { ascending: false, nullsFirst: false })
+      .limit(6)
+      .overrideTypes<HeroJob[]>(),
+    admin.from("jobs").select("id", { count: "exact", head: true }).is("closed_at", null),
+  ]);
+  const jobs = heroJobs ?? [];
 
   return (
     <main className="flex min-h-screen flex-col bg-paper">
@@ -104,34 +132,42 @@ export default async function LandingPage() {
           </ul>
         </div>
 
-        <div aria-hidden className="hidden lg:block">
+        <div className="hidden lg:block">
           <div className="rounded-lg border border-line bg-card p-5 shadow-sm">
-            <div className="mb-4 flex items-center justify-between border-b border-line pb-3">
-              <div>
-                <p className="text-sm font-semibold text-ink">Backend Engineer, Billing</p>
-                <p className="text-xs text-ink-soft">Stripe · San Francisco</p>
-              </div>
-              <span className="rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[11px] font-medium text-accent">
-                filling…
-              </span>
+            <div className="mb-3 flex items-center justify-between border-b border-line pb-3">
+              <p className="text-sm font-semibold text-ink">Live in our index right now</p>
+              {typeof openJobs === "number" && (
+                <span className="rounded bg-accent-soft px-1.5 py-0.5 font-mono text-[11px] font-medium text-accent">
+                  {openJobs.toLocaleString()} open jobs
+                </span>
+              )}
             </div>
-            <div className="hero-fill flex flex-col gap-3">
-              <MockField label="Full name" value="Jordan Reyes" />
-              <MockField label="Are you authorized to work in the US?" value="Yes" />
-              <MockField label="Will you require visa sponsorship?" value="No" />
-              <MockField label="Current employer" value="Acme Analytics" />
-              <div>
-                <p className="text-[11px] font-medium text-attention">
-                  Do you plan to work remotely? — needs your answer
-                </p>
-                <p className="mt-0.5 rounded border border-dashed border-attention/40 bg-attention-soft px-2 py-1 font-mono text-xs text-attention">
-                  null — we never guess for you
-                </p>
-              </div>
-            </div>
+            {jobs.length > 0 ? (
+              <ul className="flex flex-col gap-3">
+                {jobs.map((j) => (
+                  <li key={j.id} className="flex items-start justify-between gap-2 border-b border-line pb-3 last:border-0 last:pb-0">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-ink">{j.title}</p>
+                      <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-ink-soft">
+                        <span>
+                          {j.company}
+                          {j.location ? ` · ${j.location}` : ""}
+                        </span>
+                        <SponsorBadge verdict={j.sponsor_verdict} />
+                      </p>
+                    </div>
+                    <span className="shrink-0 font-mono text-[11px] text-ink-soft/70">
+                      {postedAgo(j.posted_at) ?? j.ats_type}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="py-6 text-center text-sm text-ink-soft">Syncing job boards — check back shortly.</p>
+            )}
           </div>
           <p className="mt-3 text-center font-mono text-[11px] text-ink-soft">
-            what the machine fills is always visible — and editable — before submit
+            real openings, synced every 2 hours — sign up and we score them against your profile
           </p>
         </div>
       </section>

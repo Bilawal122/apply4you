@@ -38,7 +38,12 @@ export async function generateMatchReasons(
   if (jobs.length === 0) return new Map();
 
   const prompt = `<profile>
-${JSON.stringify({ summary: profile.summary, skills: profile.skills, workHistory: profile.workHistory.map((j) => ({ title: j.title, company: j.company })) })}
+${JSON.stringify({
+    summary: profile.summary,
+    skills: profile.skills,
+    workHistory: profile.workHistory.map((j) => ({ title: j.title, company: j.company })),
+    additionalContext: profile.additionalInfo || undefined,
+  })}
 </profile>
 
 For each job below, write ONE sentence (max 20 words) naming the specific overlap between this candidate and the job — a shared skill, domain, or role. Ground it in the profile; never invent. Plain wording, no hype.

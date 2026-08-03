@@ -193,6 +193,22 @@ export function ProfileForm({
         <textarea className={inputCls} rows={4} value={profile.summary} onChange={(e) => set("summary", e.target.value)} />
       </section>
 
+      <section>
+        <label className={labelCls}>Additional info (optional)</label>
+        <p className="mb-1 text-xs text-ink-soft">
+          Anything a CV can&apos;t capture: career goals, constraints, things you&apos;d want mentioned
+          in a cover letter, context for gaps. The AI reads this for every application — grounded only
+          in what you write here, never invented.
+        </p>
+        <textarea
+          className={inputCls}
+          rows={4}
+          placeholder="e.g. Looking to move from backend to full-stack. Available to start immediately. Prefer product-focused teams over pure infra."
+          value={profile.additionalInfo}
+          onChange={(e) => set("additionalInfo", e.target.value)}
+        />
+      </section>
+
       {state && "error" in state && <p className="text-sm text-danger">{state.error}</p>}
       {state && "ok" in state && <p className="text-sm text-accent">Saved.</p>}
 

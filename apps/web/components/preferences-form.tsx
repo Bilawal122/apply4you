@@ -1,32 +1,79 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, type KeyboardEvent } from "react";
 import type { Preferences, WorkModel } from "@apply4you/shared";
 import { savePreferences, type SaveState } from "@/app/(app)/actions";
 import { btnPrimary, inputCls, labelCls } from "@/components/ui";
 
 const WORK_MODELS: WorkModel[] = ["remote", "hybrid", "onsite"];
 
-function ListInput({
+/**
+ * Keyword-chip input (VISION.md §2b — "select jobs by keywords"). Replaces
+ * the old comma-text ListInput: type a term, press Enter/comma to add it as
+ * a removable chip. Same onChange(string[]) contract as before, so every
+ * list-style preference field upgrades uniformly.
+ */
+function ChipInput({
   label,
+  hint,
   value,
   onChange,
   placeholder,
 }: {
   label: string;
+  hint?: string;
   value: string[];
   onChange: (v: string[]) => void;
   placeholder?: string;
 }) {
+  const [draft, setDraft] = useState("");
+
+  const commit = (raw: string) => {
+    const term = raw.trim();
+    if (!term) return;
+    if (!value.some((v) => v.toLowerCase() === term.toLowerCase())) onChange([...value, term]);
+    setDraft("");
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      commit(draft);
+    } else if (e.key === "Backspace" && draft === "" && value.length > 0) {
+      onChange(value.slice(0, -1));
+    }
+  };
+
   return (
     <div>
       <label className={labelCls}>{label}</label>
-      <input
-        className={inputCls}
-        placeholder={placeholder}
-        value={value.join(", ")}
-        onChange={(e) => onChange(e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
-      />
+      {hint && <p className="mb-1 text-xs text-ink-soft">{hint}</p>}
+      <div className={`${inputCls} flex flex-wrap items-center gap-1.5 py-1.5`}>
+        {value.map((term, i) => (
+          <span
+            key={`${term}-${i}`}
+            className="inline-flex items-center gap-1 rounded bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent"
+          >
+            {term}
+            <button
+              type="button"
+              onClick={() => onChange(value.filter((_, idx) => idx !== i))}
+              className="text-accent/70 hover:text-accent"
+              aria-label={`Remove ${term}`}
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <input
+          className="min-w-32 flex-1 border-none bg-transparent p-0 text-sm text-ink outline-none placeholder:text-ink-soft/60"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={onKeyDown}
+          onBlur={() => commit(draft)}
+          placeholder={value.length === 0 ? placeholder : "Add another…"}
+        />
+      </div>
     </div>
   );
 }
@@ -43,13 +90,14 @@ export function PreferencesForm({ initial, redirectTo }: { initial: Preferences;
       <input type="hidden" name="preferences" value={JSON.stringify(prefs)} />
       {redirectTo && <input type="hidden" name="redirectTo" value={redirectTo} />}
 
-      <ListInput
-        label="Target job titles"
+      <ChipInput
+        label="Target job titles — your keywords"
+        hint="The AI matches every open job against these by meaning, not just exact text — add a few and it'll catch close variants too."
         placeholder="Software Engineer, Frontend Engineer"
         value={prefs.titles}
         onChange={(v) => set("titles", v)}
       />
-      <ListInput
+      <ChipInput
         label="Locations"
         placeholder="San Francisco, New York, Remote"
         value={prefs.locations}
@@ -98,25 +146,25 @@ export function PreferencesForm({ initial, redirectTo }: { initial: Preferences;
         </div>
       </div>
 
-      <ListInput
+      <ChipInput
         label="Seniority levels"
         placeholder="Junior, Mid, Senior"
         value={prefs.seniority}
         onChange={(v) => set("seniority", v)}
       />
-      <ListInput
+      <ChipInput
         label="Industries (blank for all)"
         placeholder="Fintech, Healthcare"
         value={prefs.industries}
         onChange={(v) => set("industries", v)}
       />
-      <ListInput
+      <ChipInput
         label="Excluded companies"
         placeholder="Companies never to apply to (e.g. your current employer)"
         value={prefs.excludedCompanies}
         onChange={(v) => set("excludedCompanies", v)}
       />
-      <ListInput
+      <ChipInput
         label="Excluded keywords"
         placeholder="Jobs containing these words are skipped"
         value={prefs.excludedKeywords}

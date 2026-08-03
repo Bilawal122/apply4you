@@ -25,6 +25,7 @@ const EMPTY_PROFILE: Profile = {
   education: [],
   skills: [],
   summary: "",
+  additionalInfo: "",
 };
 
 function mergeParsed(parsed: ParsedResume): Profile {

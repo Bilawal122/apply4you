@@ -32,4 +32,5 @@ export const FIXTURE_PROFILE: Profile = {
   ],
   skills: ["TypeScript", "Python", "Postgres", "AWS"],
   summary: "Software engineer with 8 years of experience in data infrastructure and backend systems.",
+  additionalInfo: "",
 };

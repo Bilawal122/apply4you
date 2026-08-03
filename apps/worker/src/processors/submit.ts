@@ -17,6 +17,7 @@ import { getAdapter, type JobRef, type LocalFile } from "@apply4you/ats";
 import { connection } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
 import { withBrowserContext } from "../browser/pool.js";
+import { notifyFailed, notifySubmitted } from "../notify.js";
 
 type SubmitData = { applicationId: string };
 
@@ -232,6 +233,7 @@ async function submitApplication(applicationId: string): Promise<void> {
       .update({ status: "failed", failure_reason: detail ? `${reason}: ${detail}` : reason })
       .eq("id", applicationId);
     await logEvent(applicationId, app.user_id, "failed", `Submission failed (${reason}) — you can apply manually via the posting link`);
+    await notifyFailed(app.user_id, { title: jobRow.title, company: jobRow.company }, reason);
   };
 
   // Resume file comes from Storage; Playwright needs it on disk.
@@ -352,6 +354,7 @@ async function submitApplication(applicationId: string): Promise<void> {
       }
       await logEvent(applicationId, app.user_id, "submitted", "Application submitted");
       await recordAtsOutcome(jobRow.ats_type, true);
+      await notifySubmitted(app.user_id, { title: jobRow.title, company: jobRow.company, applyUrl: jobRow.apply_url });
       console.log(`[submit] ${applicationId}: submitted`);
     } else {
       await fail(result.reason, result.detail);

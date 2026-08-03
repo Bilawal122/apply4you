@@ -70,10 +70,10 @@ trail every later channel links to); log employer responses as they arrive.
 |---|---|---|---|---|
 | 1.1 | **Sponsor verdict filter** — join the ingested Home Office register to jobs; verdict badge (licensed? route? salary vs £41,700/£33,400 thresholds) on every UK job; feed filter | #27 | 2–3 days | The wedge feature; JobRight's H1B equivalent drove 50k users; everything in Phase 3 markets it |
 | 1.2 | **Free Sponsorship Checker** — no-signup page: paste employer → licence verdict + N live sponsored roles, shareable result card, deep-link into the feed | #41 | 1–2 days | Top-of-funnel asset; the WhatsApp-forwardable artifact |
-| 1.3 | **Email notifications** (Resend): submitted / failed / needs-review | #21 | 1 day | Hard D6 friends-gate requirement |
+| 1.3 | ✅ **Email notifications** (Resend): submitted / failed, shipped 2026-08-03 — full plan in [EMAIL.md](EMAIL.md); needs 🧑 a Resend account + `RESEND_API_KEY` to actually send | #21 | 1 day | Hard D6 friends-gate requirement |
 | 1.4 | **Application packet** — per-job tailored CV (generalize render-resume.ts) + cover letter + all answers as one reviewable artifact; submit attaches the tailored PDF | #40 | 2–3 days | Your vision (§2); dogfood is the perfect test bed |
-| 1.5 | **Product polish pack**: "why this score" line on job cards, keyword-chips reframe of preferences, "Additional info" profile box feeding the resolver | #42 | 1–2 days | Your §2b vision; cuts needs-review gaps |
-| 1.6 | **Instant-demo landing** — upload CV / type target role on the landing page → 5 real scored matches before signup (guest session + abuse limits) | #42 | 2 days | Main-page decision from VISION §2e |
+| 1.5 | ✅ **Product polish pack**: "why this score" label on feed + job-detail cards (now consistent), keyword-chips reframe of all list-style preferences, "Additional info" profile box feeding the resolver — shipped 2026-08-03 | #42 | 1–2 days | Your §2b vision; cuts needs-review gaps |
+| 1.6 | Landing page: mock hero **replaced with real live listings** (2026-08-03, admin-client query, real company/title/sponsor-badge data, live open-jobs count). Full **instant-demo** — paste a CV/role and see 5 scored matches before signup (guest session + abuse limits) — is still open; bigger lift, tracked separately below | #42 | 2 days remaining | Main-page decision from VISION §2e concept B |
 | 1.7 | GDPR housekeeping: ICO registration (🧑 pays the ~£40–60 fee), deletion-flow retest, Gemini disclosure in privacy page | #24-ext | ½ day + fee | D6 friends-gate requirement |
 | 1.8 | Fix bugs from your dogfood friction list | — | continuous | The point of dogfooding |
 

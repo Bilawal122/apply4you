@@ -17,6 +17,7 @@ export type ProfileRow = {
   resume_storage_path: string | null;
   resume_filename: string | null;
   summary: string | null;
+  additional_info: string | null;
 };
 
 export function rowToProfile(row: ProfileRow): Profile {
@@ -32,6 +33,7 @@ export function rowToProfile(row: ProfileRow): Profile {
     education: row.education ?? [],
     skills: row.skills ?? [],
     summary: row.summary ?? "",
+    additionalInfo: row.additional_info ?? "",
   });
 }
 
@@ -48,6 +50,7 @@ export function profileToRow(profile: Profile): Omit<ProfileRow, "user_id" | "re
     education: profile.education,
     skills: profile.skills,
     summary: profile.summary,
+    additional_info: profile.additionalInfo,
   };
 }
 

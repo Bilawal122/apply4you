@@ -27,6 +27,7 @@ export async function loadProfileAndPrefs(
     education: p.education ?? [],
     skills: p.skills ?? [],
     summary: p.summary ?? "",
+    additionalInfo: p.additional_info ?? "",
   });
 
   const preferences = PreferencesSchema.parse({

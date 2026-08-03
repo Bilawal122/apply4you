@@ -114,13 +114,16 @@ section 4 below.
 
 ### 2d. "Email integration and inbox section"
 
-**Status: not built. My response: right idea, wrong order if done all at once
-— split it into three phases, because the phases differ 100x in effort:**
+**Status: Phase 1 shipped 2026-08-03 (code-complete, needs a 🧑 Resend
+account to actually send). Full plan: [EMAIL.md](EMAIL.md). Right idea,
+wrong order if done all at once — split into three phases, because the
+phases differ 100x in effort:**
 
-- **Phase 1 — outbound notifications (do at friends launch; already task #21
-  and a hard gate requirement in DECISIONS.md D6).** "Your application to X
-  was submitted / failed / needs your answer" emails via Resend. A day of
-  work, free tier covers 3,000 emails/month. Without this, non-founder users
+- **Phase 1 — outbound notifications (task #21, hard gate requirement in
+  DECISIONS.md D6). SHIPPED.** "Your application to X was submitted /
+  failed" emails via Resend, wired into the worker's two terminal
+  submission states — see EMAIL.md for the exact wiring. Free tier covers
+  3,000 emails/month. Without this, non-founder users
   have to keep checking the dashboard — a churn machine.
 - **Phase 2 — an in-app inbox via a forwarding alias (build during/after
   friends phase).** Each user gets a unique address (e.g.
