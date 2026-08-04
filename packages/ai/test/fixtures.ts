@@ -27,6 +27,7 @@ export const FIXTURE_PROFILE: Profile = {
       bullets: ["Built ETL pipelines in Python and Airflow"],
     },
   ],
+  projects: [],
   education: [
     { school: "UC Berkeley", degree: "BS", field: "Computer Science", start: "2014-08", end: "2018-05" },
   ],

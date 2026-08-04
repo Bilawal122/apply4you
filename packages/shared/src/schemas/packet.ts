@@ -25,6 +25,8 @@ export const TailoredCvSchema = z.object({
     }),
   ),
   skillIndices: z.array(z.number().int().nonnegative()),
+  /** Defaulted: selections stored before projects existed must still parse. */
+  projectIndices: z.array(z.number().int().nonnegative()).default([]),
   educationIndices: z.array(z.number().int().nonnegative()),
   /** One line, shown to the user only — why this shape for this job. */
   rationale: z.string(),
@@ -37,6 +39,7 @@ export interface ResolvedCv {
   summary: string;
   rationale: string;
   roles: Array<{ company: string; title: string; start: string; end: string; bullets: string[] }>;
+  projects: Array<{ name: string; tech: string; url: string; bullets: string[] }>;
   skills: string[];
   education: Array<{ school: string; degree: string; field: string; start: string; end: string }>;
   /** Bullets/roles the selection left out — surfaced so the user can see what was dropped. */
@@ -75,6 +78,10 @@ export function resolveTailoredCv(profile: Profile, cv: TailoredCv): ResolvedCv 
     .filter((i) => inRange(i, profile.skills.length))
     .map((i) => profile.skills[i]!);
 
+  const projects = [...new Set(cv.projectIndices ?? [])]
+    .filter((i) => inRange(i, profile.projects.length))
+    .map((i) => profile.projects[i]!);
+
   const education = [...new Set(cv.educationIndices)]
     .filter((i) => inRange(i, profile.education.length))
     .map((i) => profile.education[i]!);
@@ -82,6 +89,8 @@ export function resolveTailoredCv(profile: Profile, cv: TailoredCv): ResolvedCv 
   const finalRoles = roles.length > 0 ? roles : profile.workHistory;
   const finalSkills = skills.length > 0 ? skills : profile.skills;
   const finalEducation = education.length > 0 ? education : profile.education;
+  // Projects are never dropped wholesale — a thin CV is worse than a long one.
+  const finalProjects = projects.length > 0 ? projects : profile.projects;
 
   const keptBullets = finalRoles.reduce((n, r) => n + r.bullets.length, 0);
   const allBullets = profile.workHistory.reduce((n, r) => n + r.bullets.length, 0);
@@ -90,6 +99,7 @@ export function resolveTailoredCv(profile: Profile, cv: TailoredCv): ResolvedCv 
     summary: cv.summary.trim() || profile.summary,
     rationale: cv.rationale,
     roles: finalRoles,
+    projects: finalProjects,
     skills: finalSkills,
     education: finalEducation,
     omitted: {

@@ -7,10 +7,34 @@ import type { BlockKind } from "./types.js";
  * get pressSequentially instead.
  */
 
-/** CSS.escape for Node (Playwright locators evaluate selectors in the page). */
+/**
+ * NEVER build a `#id` selector from an ATS field id. Use `[id="..."]`.
+ *
+ * This burned two real submissions (2026-08-03, ElevenLabs via Ashby): Ashby
+ * field ids are UUIDs like `6f1b584f-ba7d-...`, and a CSS identifier may not
+ * begin with a digit. `#6f1b584f-...` is a SyntaxError, and because the
+ * locator was a comma-separated list, the one invalid part invalidated the
+ * whole selector — including the perfectly good `[id="..."]` sitting next to
+ * it. querySelectorAll threw, the fill aborted, and the application was marked
+ * failed. Escaping punctuation (what this helper did) does not help; a leading
+ * digit needs `\3N ` escaping, which attribute selectors avoid entirely.
+ *
+ * Kept only for the rare case of escaping a value into a non-id selector.
+ */
 export function cssEscape(value: string): string {
   return value.replace(/[^a-zA-Z0-9_-]/g, (c) => `\\${c}`);
 }
+
+/**
+ * Per-field ceiling for "is this control actually here?" waits.
+ *
+ * Playwright's default is 30s. A form with a handful of controls that never
+ * render (hidden behind a step, or simply absent from the DOM despite being in
+ * the form schema) then spends minutes before failing — which is how a missing
+ * Workable "summary" field timed out and, before the per-field guards, killed
+ * an entire submission.
+ */
+export const CONTROL_TIMEOUT_MS = 6_000;
 
 /**
  * Resolve a form control by its ATS-native field id, id-first.
@@ -42,7 +66,7 @@ export async function humanPause(min = 120, max = 400): Promise<void> {
 }
 
 export async function typeInto(locator: Locator, value: string, { reactSafe = false } = {}): Promise<void> {
-  await locator.scrollIntoViewIfNeeded();
+  await locator.scrollIntoViewIfNeeded({ timeout: CONTROL_TIMEOUT_MS });
   if (reactSafe) {
     await locator.click();
     await locator.clear();

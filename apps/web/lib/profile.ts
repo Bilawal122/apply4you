@@ -12,6 +12,7 @@ export type ProfileRow = {
   links: Record<string, string> | null;
   work_authorization: string | null;
   work_history: unknown;
+  projects: unknown;
   education: unknown;
   skills: string[] | null;
   resume_storage_path: string | null;
@@ -30,6 +31,7 @@ export function rowToProfile(row: ProfileRow): Profile {
     links: row.links ?? {},
     workAuthorization: row.work_authorization ?? "",
     workHistory: row.work_history ?? [],
+    projects: (row.projects ?? []) as Profile["projects"],
     education: row.education ?? [],
     skills: row.skills ?? [],
     summary: row.summary ?? "",
@@ -47,6 +49,7 @@ export function profileToRow(profile: Profile): Omit<ProfileRow, "user_id" | "re
     links: Object.fromEntries(Object.entries(profile.links).filter(([, v]) => v)),
     work_authorization: profile.workAuthorization,
     work_history: profile.workHistory,
+    projects: profile.projects,
     education: profile.education,
     skills: profile.skills,
     summary: profile.summary,

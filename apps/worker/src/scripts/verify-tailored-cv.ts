@@ -21,6 +21,14 @@ const PROFILE: Profile = {
   location: "San Francisco, CA",
   links: { linkedin: "https://linkedin.com/in/jordanreyes", github: "https://github.com/jreyes" },
   workAuthorization: "US citizen",
+  projects: [
+    {
+      name: "Ledger",
+      tech: "TypeScript, Postgres",
+      url: "https://github.com/jreyes/ledger",
+      bullets: ["Double-entry accounting engine with 99% test coverage"],
+    },
+  ],
   workHistory: [
     {
       company: "Acme Analytics",
@@ -68,6 +76,7 @@ async function main(): Promise<void> {
       { index: -1, bulletIndices: [0] }, // negative
     ],
     skillIndices: [0, 0, 77, -3],
+    projectIndices: [0, 55],
     educationIndices: [0, 5],
     rationale: "Led with the billing work.",
   };
@@ -89,7 +98,7 @@ async function main(): Promise<void> {
 
   console.log("\n2. Empty selection degrades to the full profile, not a blank CV");
   const empty = resolveTailoredCv(PROFILE, {
-    summary: "", roles: [], skillIndices: [], educationIndices: [], rationale: "",
+    summary: "", roles: [], skillIndices: [], projectIndices: [], educationIndices: [], rationale: "",
   });
   check("all roles restored", empty.roles.length === PROFILE.workHistory.length);
   check("all skills restored", empty.skills.length === PROFILE.skills.length);
@@ -97,7 +106,7 @@ async function main(): Promise<void> {
 
   console.log("\n3. A role selected with no valid bullets keeps its own bullets");
   const noBullets = resolveTailoredCv(PROFILE, {
-    summary: "x", roles: [{ index: 1, bulletIndices: [88] }], skillIndices: [1], educationIndices: [0], rationale: "",
+    summary: "x", roles: [{ index: 1, bulletIndices: [88] }], skillIndices: [1], projectIndices: [], educationIndices: [0], rationale: "",
   });
   check("role kept with its real bullets", noBullets.roles[0]?.bullets.length === 1
     && noBullets.roles[0]?.bullets[0] === PROFILE.workHistory[1]!.bullets[0]);
@@ -110,6 +119,13 @@ async function main(): Promise<void> {
   check("dates humanised", html.includes("Mar 2021"));
   check("no hardcoded founder details leaked from the old script",
     !/Bilawal|Edge Hill|Bolton/i.test(html));
+  check("renders the Projects section", html.includes("Projects") && html.includes("Ledger"));
+  check("out-of-range project dropped", resolved.projects.length === 1);
+  check("all role bullets kept when the model selects them all",
+    resolveTailoredCv(PROFILE, {
+      summary: "s", rationale: "r", skillIndices: [0], projectIndices: [0], educationIndices: [0],
+      roles: [{ index: 0, bulletIndices: [0, 1, 2] }],
+    }).roles[0]?.bullets.length === 3);
 
   console.log("\n5. Renders a real PDF");
   const out = process.argv[2] ?? "tailored-cv.pdf";

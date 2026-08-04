@@ -31,6 +31,7 @@ export async function loadProfileAndPrefs(
     links: p.links ?? {},
     workAuthorization: p.work_authorization ?? "",
     workHistory: p.work_history ?? [],
+    projects: p.projects ?? [],
     education: p.education ?? [],
     skills: p.skills ?? [],
     summary: p.summary ?? "",

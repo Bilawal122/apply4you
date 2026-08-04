@@ -2,7 +2,12 @@
 
 import { useState, useTransition } from "react";
 import type { Field, ResolvedCv, ResolvedValues, UnresolvedField } from "@apply4you/shared";
-import { approveApplication, saveApplicationFields, skipApplication } from "@/app/(app)/applications/actions";
+import {
+  approveApplication,
+  fillFieldWithAi,
+  saveApplicationFields,
+  skipApplication,
+} from "@/app/(app)/applications/actions";
 import {
   NeedsYouStamp,
   Provenance,
@@ -119,6 +124,25 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
   // Fields the user has touched this session, so their answers can be marked
   // as theirs rather than the machine's.
   const [edited, setEdited] = useState<Set<string>>(new Set());
+  // Which field is currently being drafted, and any per-field message.
+  const [drafting, setDrafting] = useState<string | null>(null);
+  const [fieldNote, setFieldNote] = useState<Record<string, string>>({});
+
+  const draftAnswer = (fieldId: string) => {
+    setDrafting(fieldId);
+    setFieldNote((n) => ({ ...n, [fieldId]: "" }));
+    startTransition(async () => {
+      const res = await fillFieldWithAi(app.id, fieldId);
+      if (res.value) {
+        setValues((v) => ({ ...v, [fieldId]: res.value! }));
+        setEdited((e) => new Set(e).add(fieldId));
+        setDirty(true);
+      } else if (res.error) {
+        setFieldNote((n) => ({ ...n, [fieldId]: res.error! }));
+      }
+      setDrafting(null);
+    });
+  };
 
   // resume_text (paste-resume textarea) and EEOC blocks are never filled by
   // the machine — hide them from review too.
@@ -249,6 +273,22 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
                       {field.required && <span className="text-attention"> *</span>}
                     </label>
                     {missing ? <NeedsYouStamp /> : <Provenance source={source} />}
+
+                    {/* Drafting is opt-in per field: the resolver deliberately
+                        left this blank, so the user asks for a draft rather
+                        than having one appear unbidden. */}
+                    <button
+                      type="button"
+                      onClick={() => draftAnswer(field.id)}
+                      disabled={pending}
+                      className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-accent hover:underline disabled:opacity-40"
+                    >
+                      {drafting === field.id && <Spinner />}
+                      {drafting === field.id ? "drafting…" : value ? "redraft with AI" : "fill with AI"}
+                    </button>
+                    {fieldNote[field.id] && (
+                      <span className="text-[11px] leading-snug text-attention">{fieldNote[field.id]}</span>
+                    )}
                   </div>
 
                   <div className="min-w-0">

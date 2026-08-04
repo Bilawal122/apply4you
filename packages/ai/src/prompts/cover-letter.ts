@@ -25,12 +25,15 @@ function violations(text: string): string[] {
 }
 
 function buildPrompt(input: CoverLetterInput, previousViolations?: string[]): string {
-  const targetWords = input.maxLength ? Math.min(280, Math.floor(input.maxLength / 6)) : 250;
+  // A 250-word letter reads as a stub next to what people actually send.
+  // 380 is roughly a full page, which is what an employer expects.
+  const targetWords = input.maxLength ? Math.min(420, Math.floor(input.maxLength / 6)) : 380;
   return `Write a cover letter for this candidate applying to this job.
 
 Rules:
 - Ground EVERY claim in the profile below. Never invent experience, numbers, employers, or credentials.
-- Name 2-3 concrete requirements from the job description and connect them to specific profile facts.
+- Structure it: an opening naming the role and why this employer; two middle paragraphs each taking a concrete requirement from the job description and answering it with a specific, evidenced example from the profile (numbers where the profile has them); a short close.
+- Name 3-4 concrete requirements from the job description and connect each to specific profile facts. Draw on projects as well as employment.
 - Plain, direct, confident tone. No hype words. Banned: ${BANNED_PHRASES.join(", ")}.
 - No placeholders like [Company] or [Your Name] — write the final text, addressed to the ${input.job.company} hiring team, signed with the candidate's name.
 - About ${targetWords} words.${input.maxLength ? ` HARD LIMIT: ${input.maxLength} characters.` : ""}
@@ -63,8 +66,9 @@ export async function generateCoverLetter(input: CoverLetterInput): Promise<{ te
     if (input.maxLength && text.length > input.maxLength) text = text.slice(0, input.maxLength);
 
     const found = violations(text);
-    if (found.length === 0 && text.length > 100) return { text, ok: true };
-    lastViolations = found.length ? found : ["letter too short"];
+    // Guard the floor too: a 3-line letter is a failure even if it breaks no rules.
+    if (found.length === 0 && text.length > 700) return { text, ok: true };
+    lastViolations = found.length ? found : ["letter was far too short — write the full structure asked for"];
   }
 
   return { text: "", ok: false };

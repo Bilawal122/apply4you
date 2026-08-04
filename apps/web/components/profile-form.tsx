@@ -1,12 +1,13 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import type { Profile, WorkHistoryEntry, EducationEntry } from "@apply4you/shared";
+import type { Profile, WorkHistoryEntry, EducationEntry, ProjectEntry } from "@apply4you/shared";
 import { saveProfile, type SaveState } from "@/app/(app)/actions";
 import { btnPrimary, inputCls, labelCls } from "@/components/ui";
 
 const emptyJob: WorkHistoryEntry = { company: "", title: "", start: "", end: "present", bullets: [] };
 const emptyEdu: EducationEntry = { school: "", degree: "", field: "", start: "", end: "" };
+const emptyProject: ProjectEntry = { name: "", tech: "", url: "", bullets: [] };
 
 export function ProfileForm({
   initial,
@@ -27,6 +28,12 @@ export function ProfileForm({
     set(
       "workHistory",
       profile.workHistory.map((j, idx) => (idx === i ? { ...j, ...patch } : j)),
+    );
+
+  const setProject = (i: number, patch: Partial<ProjectEntry>) =>
+    set(
+      "projects",
+      profile.projects.map((pr, idx) => (idx === i ? { ...pr, ...patch } : pr)),
     );
 
   const setEdu = (i: number, patch: Partial<EducationEntry>) =>
@@ -135,6 +142,49 @@ export function ProfileForm({
                 type="button"
                 className="mt-2 text-xs text-danger underline"
                 onClick={() => set("workHistory", profile.workHistory.filter((_, idx) => idx !== i))}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <div className="mb-2 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold">Projects</h2>
+            <p className="text-xs text-ink-soft">
+              Side projects, open source, portfolio work. Often the strongest evidence you have.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="text-sm text-accent underline"
+            onClick={() => set("projects", [...profile.projects, { ...emptyProject }])}
+          >
+            + Add project
+          </button>
+        </div>
+        <div className="flex flex-col gap-4">
+          {profile.projects.map((pr, i) => (
+            <div key={i} className="rounded-lg border border-line bg-card p-4">
+              <div className="grid grid-cols-2 gap-3">
+                <input className={inputCls} placeholder="Project name" value={pr.name} onChange={(e) => setProject(i, { name: e.target.value })} />
+                <input className={inputCls} placeholder="Tech / stack" value={pr.tech} onChange={(e) => setProject(i, { tech: e.target.value })} />
+              </div>
+              <input className={`${inputCls} mt-3`} placeholder="URL (optional)" value={pr.url} onChange={(e) => setProject(i, { url: e.target.value })} />
+              <textarea
+                className={`${inputCls} mt-3`}
+                rows={3}
+                placeholder="What it does and what you built, one per line"
+                value={pr.bullets.join("\n")}
+                onChange={(e) => setProject(i, { bullets: e.target.value.split("\n").filter(Boolean) })}
+              />
+              <button
+                type="button"
+                className="mt-2 text-xs text-danger underline"
+                onClick={() => set("projects", profile.projects.filter((_, idx) => idx !== i))}
               >
                 Remove
               </button>

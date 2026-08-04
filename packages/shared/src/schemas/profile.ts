@@ -16,6 +16,17 @@ export const EducationEntrySchema = z.object({
   end: z.string(),
 });
 
+/** Side projects, open source, portfolio work — often the strongest evidence
+ *  for a career-changer or a recent graduate, and the section a CV parser is
+ *  most likely to lose because it has no standard shape. */
+export const ProjectEntrySchema = z.object({
+  name: z.string(),
+  /** Tech/stack line shown under the title. */
+  tech: z.string(),
+  url: z.string(),
+  bullets: z.array(z.string()),
+});
+
 export const ProfileLinksSchema = z.object({
   linkedin: z.string().optional(),
   github: z.string().optional(),
@@ -31,6 +42,7 @@ export const ProfileSchema = z.object({
   links: ProfileLinksSchema,
   workAuthorization: z.string(),
   workHistory: z.array(WorkHistoryEntrySchema),
+  projects: z.array(ProjectEntrySchema),
   education: z.array(EducationEntrySchema),
   skills: z.array(z.string()),
   summary: z.string(),
@@ -45,6 +57,7 @@ export const ProfileSchema = z.object({
 export const ParsedResumeSchema = ProfileSchema.omit({ summary: true, additionalInfo: true }).partial();
 
 export type WorkHistoryEntry = z.infer<typeof WorkHistoryEntrySchema>;
+export type ProjectEntry = z.infer<typeof ProjectEntrySchema>;
 export type EducationEntry = z.infer<typeof EducationEntrySchema>;
 export type ProfileLinks = z.infer<typeof ProfileLinksSchema>;
 export type Profile = z.infer<typeof ProfileSchema>;

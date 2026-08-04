@@ -4,13 +4,17 @@ import { revalidatePath } from "next/cache";
 import {
   PLANS,
   FILLABLE_FIELD_TYPES,
+  isDemographicField,
   currentUsagePeriod,
   type Field,
   type PlanId,
   type ResolvedValues,
   type UnresolvedField,
 } from "@apply4you/shared";
+import { resolveFieldsWithLlm } from "@apply4you/ai";
 import { createClient } from "@/lib/supabase/server";
+import { rowToProfile, type ProfileRow } from "@/lib/profile";
+import { ensureUsageSink } from "@/lib/ai-usage";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { enqueueSubmit } from "@/lib/queue";
 
@@ -224,4 +228,94 @@ export async function skipApplication(applicationId: string): Promise<ActionResu
 
   revalidatePath("/applications", "page");
   return {};
+}
+
+/**
+ * "Fill with AI" — draft one specific answer on demand (user-initiated).
+ *
+ * The resolver deliberately leaves a field null when it can't ground an answer
+ * in the profile, which is right for an automated pass but leaves the user
+ * staring at a blank box. This lets them ask for a draft for that one field,
+ * explicitly, and then edit it.
+ *
+ * It is still grounded in the profile and still refuses to invent facts — the
+ * difference is consent and scope, not licence. The result is marked as
+ * AI-written in answer_sources so provenance stays honest.
+ */
+export async function fillFieldWithAi(
+  applicationId: string,
+  fieldId: string,
+): Promise<{ value?: string; error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in" };
+
+  const { data: app } = await supabase
+    .from("applications")
+    .select("id, status, form_schema, resolved_fields, answer_sources, jobs!inner(title, company, description)")
+    .eq("id", applicationId)
+    .maybeSingle<{
+      id: string;
+      status: string;
+      form_schema: Field[] | null;
+      resolved_fields: ResolvedValues | null;
+      answer_sources: Record<string, string> | null;
+      jobs: { title: string; company: string; description: string | null };
+    }>();
+  if (!app) return { error: "Application not found" };
+  if (!["draft", "needs_review"].includes(app.status)) {
+    return { error: "This application is no longer editable" };
+  }
+
+  const field = (app.form_schema ?? []).find((f) => f.id === fieldId);
+  if (!field) return { error: "Unknown field" };
+
+  // Demographic/EEO questions are never machine-answered, on request or
+  // otherwise (DECISIONS.md D3.5). Asking nicely does not change that.
+  if (isDemographicField(field.id, field.label)) {
+    return { error: "We never answer demographic questions for you — this one is yours alone." };
+  }
+
+  const { data: profileRow } = await supabase.from("profiles").select("*").maybeSingle<ProfileRow>();
+  if (!profileRow) return { error: "No profile yet" };
+
+  await ensureUsageSink();
+  let value: string | null = null;
+  try {
+    const resolved = await resolveFieldsWithLlm(
+      {
+        profile: rowToProfile(profileRow),
+        job: {
+          title: app.jobs.title,
+          company: app.jobs.company,
+          description: app.jobs.description ?? "",
+        },
+      },
+      [field],
+    );
+    value = resolved[field.id] ?? null;
+  } catch (err) {
+    return { error: `Couldn't draft an answer: ${String(err).slice(0, 120)}` };
+  }
+
+  if (!value) {
+    return {
+      error:
+        "Nothing in your profile answers this one, so we won't guess. Add it to your profile or answer it yourself.",
+    };
+  }
+
+  const { error } = await supabase
+    .from("applications")
+    .update({
+      resolved_fields: { ...(app.resolved_fields ?? {}), [fieldId]: value },
+      answer_sources: { ...(app.answer_sources ?? {}), [fieldId]: "ai" },
+    })
+    .eq("id", applicationId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/applications", "page");
+  return { value };
 }

@@ -16,7 +16,7 @@ export function greenhouseFillUrl(job: JobRef): string {
 
 function controlFor(page: Page, fieldId: string) {
   // New UI uses id = question name; legacy uses name attr. Try both.
-  return page.locator(`#${cssEscape(fieldId)}, [name="${fieldId}"]`).first();
+  return page.locator(`[id="${fieldId}"], [name="${fieldId}"]`).first();
 }
 
 export async function fillGreenhouseForm(

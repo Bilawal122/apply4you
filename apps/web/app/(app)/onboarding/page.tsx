@@ -22,6 +22,7 @@ const EMPTY_PROFILE: Profile = {
   links: {},
   workAuthorization: "",
   workHistory: [],
+  projects: [],
   education: [],
   skills: [],
   summary: "",
@@ -34,6 +35,7 @@ function mergeParsed(parsed: ParsedResume): Profile {
     ...Object.fromEntries(Object.entries(parsed).filter(([, v]) => v !== undefined)),
     links: parsed.links ?? {},
     workHistory: parsed.workHistory ?? [],
+    projects: parsed.projects ?? [],
     education: parsed.education ?? [],
     skills: parsed.skills ?? [],
   };

@@ -56,6 +56,16 @@ export function renderCvHtml(profile: Profile, cv: ResolvedCv): string {
     )
     .join("");
 
+  const projects = cv.projects
+    .map(
+      (pr) => `<div class="entry">
+        <div class="row"><span class="ttl">${esc(pr.name)}</span>${pr.url ? `<span class="meta">${esc(pr.url.replace(/^https?:\/\//, ""))}</span>` : ""}</div>
+        ${pr.tech ? `<div class="sub">${esc(pr.tech)}</div>` : ""}
+        ${pr.bullets.length ? `<ul>${pr.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>` : ""}
+      </div>`,
+    )
+    .join("");
+
   const education = cv.education
     .map(
       (e) => `<div class="entry">
@@ -68,6 +78,7 @@ export function renderCvHtml(profile: Profile, cv: ResolvedCv): string {
   const sections = [
     cv.summary.trim() ? `<h2>Profile</h2><p class="summary">${esc(cv.summary.trim())}</p>` : "",
     roles ? `<h2>Experience</h2>${roles}` : "",
+    projects ? `<h2>Projects</h2>${projects}` : "",
     education ? `<h2>Education</h2>${education}` : "",
     cv.skills.length ? `<h2>Skills</h2><p>${esc(cv.skills.join(" • "))}</p>` : "",
   ]

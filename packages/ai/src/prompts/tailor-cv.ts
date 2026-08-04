@@ -33,10 +33,11 @@ const RESPONSE_SCHEMA: Schema = {
       },
     },
     skillIndices: { type: Type.ARRAY, items: { type: Type.INTEGER } },
+    projectIndices: { type: Type.ARRAY, items: { type: Type.INTEGER } },
     educationIndices: { type: Type.ARRAY, items: { type: Type.INTEGER } },
     rationale: { type: Type.STRING },
   },
-  required: ["summary", "roles", "skillIndices", "educationIndices", "rationale"],
+  required: ["summary", "roles", "skillIndices", "projectIndices", "educationIndices", "rationale"],
 };
 
 function buildPrompt(input: TailorCvInput): string {
@@ -49,6 +50,12 @@ function buildPrompt(input: TailorCvInput): string {
     bullets: r.bullets.map((b, bi) => ({ index: bi, text: b })),
   }));
   const skills = input.profile.skills.map((s, i) => ({ index: i, skill: s }));
+  const projects = input.profile.projects.map((pr, i) => ({
+    index: i,
+    name: pr.name,
+    tech: pr.tech,
+    bullets: pr.bullets,
+  }));
   const education = input.profile.education.map((e, i) => ({
     index: i,
     degree: e.degree,
@@ -61,11 +68,14 @@ function buildPrompt(input: TailorCvInput): string {
 You are NOT writing a CV. You do not rewrite, reword, embellish or invent anything. You return indices.
 
 Rules:
-- roles: the candidate's roles worth showing, most relevant first. Keep every role that could matter; drop only ones with no bearing on this job. Never drop a role just because it is old if it is the only relevant experience.
-- bulletIndices: within each role, the bullets that speak to THIS job's requirements, most relevant first. Prefer 2-4 per role. If a role has few bullets, keep them all.
-- skillIndices: the candidate's skills this employer actually asked for or would value, most relevant first.
-- educationIndices: usually all of them; drop only if clearly irrelevant.
-- summary: 2-3 sentences, first person implied (no "I"), naming what this candidate brings to THIS role. Ground every claim in the profile below. Invent nothing — no numbers, employers, tools or credentials that do not appear above. No hype. Banned words: ${BANNED_PHRASES.join(", ")}.
+This CV will be read by an applicant tracking system before a human sees it, so COVERAGE MATTERS. Cutting relevant content lowers the candidate's keyword match. Your job is to ORDER and PRIORITISE, not to shorten.
+
+- roles: every role, most relevant first. Drop a role only if it has genuinely no bearing on this job. Never drop a role because it is old.
+- bulletIndices: within each role, ALL of its bullets, ordered most-relevant first. Only omit a bullet that is actively irrelevant to this employer. Do not trim for brevity — a fuller CV scores better with an ATS, and the candidate worked for these lines.
+- skillIndices: ALL skills the employer asked for or would plausibly value, most relevant first. Include adjacent and transferable ones; only drop skills with no bearing on the role.
+- projectIndices: the candidate's projects, most relevant first. For a career-changer or recent graduate these are often the strongest evidence — include them generously.
+- educationIndices: all of them, most recent first.
+- summary: 3-4 sentences, first person implied (no "I"), naming what this candidate brings to THIS role and echoing the words the job description itself uses (ATS parsers match on them). Ground every claim in the profile below. Invent nothing — no numbers, employers, tools or credentials that do not appear above. No hype. Banned words: ${BANNED_PHRASES.join(", ")}.
 - rationale: ONE short sentence telling the candidate why you shaped it this way, addressed to them ("Led with your billing work because...").
 
 <job>
@@ -79,6 +89,10 @@ ${JSON.stringify(roles)}
 <candidate_skills>
 ${JSON.stringify(skills)}
 </candidate_skills>
+
+<candidate_projects>
+${JSON.stringify(projects)}
+</candidate_projects>
 
 <candidate_education>
 ${JSON.stringify(education)}

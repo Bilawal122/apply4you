@@ -13,44 +13,50 @@ export async function fillLeverForm(
   resume: LocalFile,
 ): Promise<void> {
   for (const field of fields) {
-    if (field.type === "file") {
-      if (field.id === "resume") {
-        await page.locator('input[name="resume"]').setInputFiles(resume.path);
-        // Lever shows a parsing indicator briefly; give it a moment.
-        await humanPause(2000, 3500);
-      }
-      continue;
-    }
-
-    const value = values[field.id];
-    if (value == null || value === "") continue;
-    const selector = `[name="${field.id}"]`;
-
-    switch (field.type) {
-      case "select": {
-        await page.locator(`select${selector}`).selectOption({ label: value });
-        await humanPause();
-        break;
-      }
-      case "multiselect": {
-        for (const part of value.split(MULTI_SEP).map((p) => p.trim())) {
-          await page.locator(`input[type="checkbox"]${selector}[value="${part}"]`).check();
-          await humanPause(80, 200);
+    try {
+      if (field.type === "file") {
+        if (field.id === "resume") {
+          await page.locator('input[name="resume"]').setInputFiles(resume.path);
+          // Lever shows a parsing indicator briefly; give it a moment.
+          await humanPause(2000, 3500);
         }
-        break;
+        continue;
       }
-      case "radio": {
-        await page.locator(`input[type="radio"]${selector}[value="${value}"]`).check();
-        await humanPause();
-        break;
+
+      const value = values[field.id];
+      if (value == null || value === "") continue;
+      const selector = `[name="${field.id}"]`;
+
+      switch (field.type) {
+        case "select": {
+          await page.locator(`select${selector}`).selectOption({ label: value });
+          await humanPause();
+          break;
+        }
+        case "multiselect": {
+          for (const part of value.split(MULTI_SEP).map((p) => p.trim())) {
+            await page.locator(`input[type="checkbox"]${selector}[value="${part}"]`).check();
+            await humanPause(80, 200);
+          }
+          break;
+        }
+        case "radio": {
+          await page.locator(`input[type="radio"]${selector}[value="${value}"]`).check();
+          await humanPause();
+          break;
+        }
+        case "textarea": {
+          await typeInto(page.locator(`textarea${selector}`), value);
+          break;
+        }
+        default: {
+          await typeInto(page.locator(`input${selector}`), value);
+        }
       }
-      case "textarea": {
-        await typeInto(page.locator(`textarea${selector}`), value);
-        break;
-      }
-      default: {
-        await typeInto(page.locator(`input${selector}`), value);
-      }
+    } catch (err) {
+      // One uncooperative control must never cost the whole application:
+      // the rest of the form still submits and the gap shows up in review.
+      console.error(`[lever fill] ${field.id} (${field.label.slice(0, 50)}) failed: ${String(err).slice(0, 140)}`);
     }
   }
 }

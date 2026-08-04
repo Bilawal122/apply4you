@@ -18,7 +18,8 @@ export function workableFillUrl(job: JobRef): string {
 }
 
 function controlFor(page: Page, fieldId: string) {
-  return page.locator(`[data-ui="${fieldId}"], [name="${fieldId}"], #${fieldId.replace(/[^\w-]/g, "\\$&")}`).first();
+  // Attribute selectors only — never `#id`. See cssEscape in ../fill-helpers.ts.
+  return page.locator(`[data-ui="${fieldId}"], [id="${fieldId}"], [name="${fieldId}"]`).first();
 }
 
 export async function fillWorkableForm(
@@ -28,56 +29,62 @@ export async function fillWorkableForm(
   resume: LocalFile,
 ): Promise<void> {
   for (const field of fields) {
-    if (field.type === "file") {
-      if (field.id === "resume") {
-        await page.locator('input[type="file"]').first().setInputFiles(resume.path);
-        // Workable parses the resume client-side; wait for the spinner.
-        await page
-          .getByText(/uploading|parsing/i)
-          .first()
-          .waitFor({ state: "hidden", timeout: 30_000 })
-          .catch(() => undefined);
-        await humanPause(1500, 2500);
-      }
-      continue;
-    }
-
-    const value = values[field.id];
-    if (value == null || value === "") continue;
-
-    switch (field.type) {
-      case "radio": {
-        // Boolean questions render as Yes/No radio-style buttons.
-        const group = page.locator(`[data-ui="${field.id}"]`).first();
-        const target = ((await group.count()) > 0 ? group : page).getByRole("radio", { name: value }).first();
-        if ((await target.count()) > 0) {
-          await target.check().catch(async () => target.click());
-        } else {
-          const btn = ((await group.count()) > 0 ? group : page).getByRole("button", { name: value, exact: true }).first();
-          await btn.click();
+    try {
+      if (field.type === "file") {
+        if (field.id === "resume") {
+          await page.locator('input[type="file"]').first().setInputFiles(resume.path);
+          // Workable parses the resume client-side; wait for the spinner.
+          await page
+            .getByText(/uploading|parsing/i)
+            .first()
+            .waitFor({ state: "hidden", timeout: 30_000 })
+            .catch(() => undefined);
+          await humanPause(1500, 2500);
         }
-        await humanPause();
-        break;
+        continue;
       }
-      case "select":
-      case "multiselect": {
-        const parts = field.type === "multiselect" ? value.split(MULTI_SEP).map((p) => p.trim()) : [value];
-        const combo = controlFor(page, field.id);
-        for (const part of parts) {
-          await pickComboOption(page, combo, part);
+
+      const value = values[field.id];
+      if (value == null || value === "") continue;
+
+      switch (field.type) {
+        case "radio": {
+          // Boolean questions render as Yes/No radio-style buttons.
+          const group = page.locator(`[data-ui="${field.id}"]`).first();
+          const target = ((await group.count()) > 0 ? group : page).getByRole("radio", { name: value }).first();
+          if ((await target.count()) > 0) {
+            await target.check().catch(async () => target.click());
+          } else {
+            const btn = ((await group.count()) > 0 ? group : page).getByRole("button", { name: value, exact: true }).first();
+            await btn.click();
+          }
+          await humanPause();
+          break;
         }
-        break;
+        case "select":
+        case "multiselect": {
+          const parts = field.type === "multiselect" ? value.split(MULTI_SEP).map((p) => p.trim()) : [value];
+          const combo = controlFor(page, field.id);
+          for (const part of parts) {
+            await pickComboOption(page, combo, part);
+          }
+          break;
+        }
+        case "textarea": {
+          const control = controlFor(page, field.id);
+          await typeInto(control, value, { reactSafe: true });
+          break;
+        }
+        default: {
+          const control = controlFor(page, field.id);
+          if ((await control.count()) === 0) continue;
+          await typeInto(control, value, { reactSafe: true });
+        }
       }
-      case "textarea": {
-        const control = controlFor(page, field.id);
-        await typeInto(control, value, { reactSafe: true });
-        break;
-      }
-      default: {
-        const control = controlFor(page, field.id);
-        if ((await control.count()) === 0) continue;
-        await typeInto(control, value, { reactSafe: true });
-      }
+    } catch (err) {
+      // One uncooperative control must never cost the whole application:
+      // the rest of the form still submits and the gap shows up in review.
+      console.error(`[workable fill] ${field.id} (${field.label.slice(0, 50)}) failed: ${String(err).slice(0, 140)}`);
     }
   }
 }

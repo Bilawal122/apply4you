@@ -40,6 +40,19 @@ const RESUME_RESPONSE_SCHEMA: Schema = {
         required: ["company", "title", "start", "end", "bullets"],
       },
     },
+    projects: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          name: { type: Type.STRING },
+          tech: { type: Type.STRING },
+          url: { type: Type.STRING },
+          bullets: { type: Type.ARRAY, items: { type: Type.STRING } },
+        },
+        required: ["name", "tech", "url", "bullets"],
+      },
+    },
     education: {
       type: Type.ARRAY,
       items: {
@@ -65,7 +78,9 @@ Rules:
 - Normalize dates to ISO format (YYYY-MM). Use "present" as the end value for current roles.
 - links: full URLs when present.
 - workAuthorization: only if explicitly stated (e.g. "US citizen", "requires sponsorship").
-- bullets: the achievement/responsibility bullet points, verbatim.`;
+- bullets: EVERY achievement/responsibility bullet point, verbatim. Do not summarise, merge or drop any — a later step decides which to show, and it can only choose from what you extract here. Under-extracting silently shrinks the candidate's CV.
+- projects: side projects, open-source work, portfolio pieces or coursework presented as projects. Many CVs lead with these — capture name, the tech/stack line, any URL, and all bullets. Omit the array only if the resume genuinely has no project section.
+- skills: every distinct skill listed, not a representative sample.`;
 
 function validate(text: string): ParsedResume {
   const parsed: unknown = JSON.parse(text);

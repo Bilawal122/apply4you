@@ -11,7 +11,7 @@ const MULTI_SEP = "||";
  */
 
 function controlFor(page: Page, fieldId: string) {
-  return page.locator(`#${cssEscape(fieldId)}, [name="${fieldId}"], [id="${fieldId}"]`).first();
+  return page.locator(`[id="${fieldId}"], [name="${fieldId}"]`).first();
 }
 
 async function labeledControl(page: Page, field: Field) {
@@ -28,48 +28,54 @@ export async function fillAshbyForm(
   resume: LocalFile,
 ): Promise<void> {
   for (const field of fields) {
-    if (field.type === "file") {
-      if (/resume/i.test(field.id) || /resume/i.test(field.label)) {
-        await page.locator('input[type="file"]').first().setInputFiles(resume.path);
-        // Wait out Ashby's resume-parse spinner; fields it autofills are
-        // overwritten below because our loop continues after this.
-        await page
-          .getByText(/parsing|uploading/i)
-          .first()
-          .waitFor({ state: "hidden", timeout: 30_000 })
-          .catch(() => undefined);
-        await humanPause(1500, 2500);
-      }
-      continue;
-    }
-
-    const value = values[field.id];
-    if (value == null || value === "") continue;
-
-    switch (field.type) {
-      case "radio": {
-        // Ashby booleans render as Yes/No toggle buttons near the question.
-        const container = page
-          .locator(`[id="${field.id}"], [data-field-path="${field.id}"]`)
-          .first()
-          .or(page.getByText(field.label, { exact: false }).locator(".."));
-        await container.getByRole("button", { name: value, exact: true }).first().click();
-        await humanPause();
-        break;
-      }
-      case "select":
-      case "multiselect": {
-        const parts = field.type === "multiselect" ? value.split(MULTI_SEP).map((p) => p.trim()) : [value];
-        const combo = await labeledControl(page, field);
-        for (const part of parts) {
-          await pickComboOption(page, combo, part);
+    try {
+      if (field.type === "file") {
+        if (/resume/i.test(field.id) || /resume/i.test(field.label)) {
+          await page.locator('input[type="file"]').first().setInputFiles(resume.path);
+          // Wait out Ashby's resume-parse spinner; fields it autofills are
+          // overwritten below because our loop continues after this.
+          await page
+            .getByText(/parsing|uploading/i)
+            .first()
+            .waitFor({ state: "hidden", timeout: 30_000 })
+            .catch(() => undefined);
+          await humanPause(1500, 2500);
         }
-        break;
+        continue;
       }
-      default: {
-        const control = await labeledControl(page, field);
-        await typeInto(control, value, { reactSafe: true });
+
+      const value = values[field.id];
+      if (value == null || value === "") continue;
+
+      switch (field.type) {
+        case "radio": {
+          // Ashby booleans render as Yes/No toggle buttons near the question.
+          const container = page
+            .locator(`[id="${field.id}"], [data-field-path="${field.id}"]`)
+            .first()
+            .or(page.getByText(field.label, { exact: false }).locator(".."));
+          await container.getByRole("button", { name: value, exact: true }).first().click();
+          await humanPause();
+          break;
+        }
+        case "select":
+        case "multiselect": {
+          const parts = field.type === "multiselect" ? value.split(MULTI_SEP).map((p) => p.trim()) : [value];
+          const combo = await labeledControl(page, field);
+          for (const part of parts) {
+            await pickComboOption(page, combo, part);
+          }
+          break;
+        }
+        default: {
+          const control = await labeledControl(page, field);
+          await typeInto(control, value, { reactSafe: true });
+        }
       }
+    } catch (err) {
+      // One uncooperative control must never cost the whole application:
+      // the rest of the form still submits and the gap shows up in review.
+      console.error(`[ashby fill] ${field.id} (${field.label.slice(0, 50)}) failed: ${String(err).slice(0, 140)}`);
     }
   }
 }
