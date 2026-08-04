@@ -14,7 +14,7 @@ import { LiveFeed } from "@/components/live-feed";
 import { StatusBadge } from "@/components/ui";
 
 const SELECT_COLS =
-  "id, status, form_schema, resolved_fields, cover_letter, tailored_cv, unresolved_fields, created_at, submitted_at, failure_reason, jobs!inner(title, company, apply_url)";
+  "id, status, form_schema, resolved_fields, cover_letter, tailored_cv, answer_sources, unresolved_fields, created_at, submitted_at, failure_reason, jobs!inner(title, company, apply_url, closed_at)";
 
 interface AppRow {
   id: string;
@@ -23,11 +23,12 @@ interface AppRow {
   resolved_fields: ResolvedValues;
   cover_letter: string | null;
   tailored_cv: unknown;
+  answer_sources: Record<string, string> | null;
   unresolved_fields: UnresolvedField[];
   created_at: string;
   submitted_at: string | null;
   failure_reason: string | null;
-  jobs: { title: string; company: string; apply_url: string };
+  jobs: { title: string; company: string; apply_url: string; closed_at: string | null };
 }
 
 export default async function ApplicationsPage() {
@@ -72,7 +73,9 @@ export default async function ApplicationsPage() {
 
   const pending = pendingRows ?? [];
   const recent = recentRows ?? [];
-  const draftCount = pending.filter((a) => a.status === "draft").length;
+  // Matches what approveAllDrafts will actually act on, so the button
+  // never promises more than it can send.
+  const draftCount = pending.filter((a) => a.status === "draft" && a.jobs.closed_at === null).length;
 
   const toReviewApp = (row: AppRow): ReviewApp => ({
     id: row.id,
@@ -85,6 +88,8 @@ export default async function ApplicationsPage() {
     coverLetter: row.cover_letter,
     unresolvedFields: row.unresolved_fields ?? [],
     tailoredCv: resolveCv(row.tailored_cv),
+    answerSources: row.answer_sources ?? {},
+    jobClosed: row.jobs.closed_at !== null,
   });
 
   return (

@@ -94,13 +94,16 @@
 
 ## C. Apply / review flow — **highest-leverage group; this is the product**
 
-**C1. Kill the Save-then-Approve dance.** `COUNTER` · S · **no conflict — the gate stays server-side**
+**C1. Kill the Save-then-Approve dance.** ✅ **SHIPPED** · `COUNTER` · S · **no conflict — the gate stays server-side**
 - **Change:** `apps\web\components\application-review.tsx:323` disables Approve whenever `app.status === "needs_review"`, and status is only recomputed inside `saveApplicationFields` (`applications\actions.ts:46-49`). So a user who types the missing required answer must click **Save edits**, wait for the round-trip, then click **Approve**. Compute gap-state client-side from `values` and enable Approve as soon as no required field is empty — `approve()` already saves first when dirty, and `approveOne` independently refuses non-`draft` rows server-side, so the gate is untouched.
 - **Why:** this friction lands precisely on the applications that need the most human work — the ones our whole positioning is built around. It is the single worst interaction in the product.
 
-**C2. Instrument review quality — time-in-review and edit-rate.** `ORIGINAL` · M · **required by DECISIONS.md D6 and currently unmet**
+**C2. Instrument review quality — time-in-review and edit-rate.** ✅ **SHIPPED** · `ORIGINAL` · M · **was the D6 gate blocker**
 - **Change:** record card-expand time, time-to-approve, and whether the cover letter / any AI-written field was edited before approval. Nothing captures any of this today.
 - **Why:** D6 names "median time-in-review and edit-rate on AI free text" as tracked metrics and states **"<10s median review is a red flag equal to a failed submission."** Without this instrumentation the D6 friends-gate cannot be evaluated at all. This is a gate blocker, not a feature.
+- **Shipped as:** `0020_review_metrics.sql` (`applications.review_metrics jsonb`), `packages/shared/src/review-metrics.ts` (schema, `REVIEW_RED_FLAG_SECONDS = 10`, `summariseReviews`), a ref-based timer in `application-review.tsx` that accumulates only while a card is expanded, and a **Review quality** panel on the dashboard that turns amber and quotes D6 when the median breaches 10s.
+- **Two decisions worth keeping:** (1) a bulk approval is recorded as a real `{ openedCount: 0, seconds: 0, bulk: true }` row rather than omitted — an unreviewed approval is *the* observation D6 cares about, and dropping it would flatter the median into meaninglessness; (2) accepting an AI draft is tracked apart from editing one, so "fill with AI" cannot inflate the edit-rate with the machine's own output.
+- **Not flagged below 5 samples.** D6 talks about 20–25 genuine submissions; a median off two approvals is noise, and a red flag that cries wolf gets ignored.
 
 **C3. "Approve all drafts" is in tension with D6 — constrain it.** · S–M · **conflict: yes, flagging explicitly**
 - **Change:** `ApproveAllButton` → `approveAllDrafts()` approves every draft without requiring a single card to be opened. That drives median review time toward zero, which is the exact red flag D6 defines. Options: require each draft to have been expanded once; or relabel to "Approve the N you've reviewed" with the un-opened count shown; or gate it behind a one-time confirmation that names the count.
@@ -118,9 +121,15 @@
 - **Change:** `skipApplication` is terminal (`draft|needs_review → skipped`) with no inverse action, and `match_jobs` excludes any job with an application row — so one misclick removes a job from the user's world permanently.
 - **Why:** irreversibility is a trust cost, and AIApply's reviewers already report things "just vanishing" from their account. Cheap to fix, easy to say.
 
-**C7. Give ordinary fields real provenance instead of an inferred one.** `ORIGINAL` · M · no conflict
+**C7. Give ordinary fields real provenance instead of an inferred one.** ✅ **SHIPPED** · `ORIGINAL` · M · no conflict
 - **Change:** `sourceOf` in `application-review.tsx:136-141` is `edited-this-session → you`, `non-empty → profile`, `empty → unknown`. After a page reload, every AI-chosen answer reads **"from your profile"**. DESIGN.md documents this as deliberate ("the resolver doesn't record which path filled each one"). Make the resolver record it and store it alongside `resolved_fields`.
 - **Why:** provenance is the signature of the design system and the trust argument made visible — and it is currently only three-quarters honest on the one screen where it matters. Do this by *recording*, never by inferring.
+- **Shipped as:** the resolver already wrote `answer_sources` (task #31); the gap was that `sourceOf` never read it, so after a reload an AI-written answer still read PROFILE — the UI contradicting a fact the database already held. It now consults the stored record before falling back. The resolver's fourth value, `library`, gained its own honest label ("your saved answer") rather than being folded into PROFILE: those are answers the user wrote themselves on an earlier application, and calling them either "from your profile" or "written by AI" would be false.
+
+**C8. A closed posting must not read "ready to send".** ✅ **SHIPPED** · `ORIGINAL` · S · no conflict — found while verifying C2
+- **Change:** you can't *queue* a closed job (the feed and `actions.ts` both filter `closed_at`), and `submit.ts` has a D3 staleness guard that fails gracefully on a dead form. But nothing rechecked between queueing and approval. Found live: **3 of 33 pending applications pointed at jobs the poller had already marked `closed_at`**, and every one of them displayed **READY TO SEND**. Two of the three 404'd when re-resolved.
+- **Why:** approving one spends a daily-cap slot, a plan-quota application and a Playwright run on a form that no longer exists — and the user has spent their review attention on something that was never going to send. The database already knew. The UI just didn't say. That is the exact failure this product exists to not commit.
+- **Shipped as:** a `POSTING CLOSED` chip in place of the status, a plain-English explanation inside the card, Approve disabled with a reason, a server-side refusal in `approveOne` (the client can always be stale), and `approveAllDrafts` filtering closed rows *before* counting — otherwise they inflated the count fed to `checkLimits` and consumed slots in the slice, silently giving the user fewer real submissions than their cap allowed.
 
 > **🚩 DO NOT: a Sprout-style "Require Approval" toggle.** Sprout exposes the review gate as a user setting, implying full-auto is the default. DECISIONS.md **D3 is explicit**: "Full-auto mode stays off for everyone, founder included; any future auto-submit requires an explicit per-user opt-in," and D4 defers it. Task #22 sits in ROADMAP Phase 5. Shipping an approval toggle now directly breaks D3. Note also that Sprout, our closest structural analogue, does **not** gate the review setting behind a tier — if/when #22 lands, gating it as a Pro feature would look like selling the removal of a safety control.
 

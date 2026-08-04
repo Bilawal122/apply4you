@@ -136,10 +136,14 @@ export function ScoreBadge({ score }: { score: number }) {
  * which path filled each one, and inventing that distinction would be exactly
  * the kind of confident guess this product refuses to make.
  */
-export type Source = "profile" | "ai" | "you" | "unknown";
+export type Source = "profile" | "library" | "ai" | "you" | "unknown";
 
 const SOURCE_COPY: Record<Source, { label: string; cls: string }> = {
   profile: { label: "from your profile", cls: "text-ink-faint" },
+  // The Answer Library holds answers this user wrote themselves on an earlier
+  // application. Calling that "from your profile" would misattribute their own
+  // words, and calling it "written by AI" would be plainly false.
+  library: { label: "your saved answer", cls: "text-ink-soft" },
   ai: { label: "written by AI", cls: "text-accent" },
   you: { label: "you wrote this", cls: "text-ink-soft" },
   unknown: { label: "needs you", cls: "text-attention" },

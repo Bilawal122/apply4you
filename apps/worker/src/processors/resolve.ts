@@ -40,7 +40,8 @@ async function logEvent(applicationId: string, userId: string, status: string, m
   });
 }
 
-async function resolveApplication(applicationId: string): Promise<void> {
+/** Exported so the resolve path can be exercised inline, without a queue. */
+export async function resolveApplication(applicationId: string): Promise<void> {
   const db = supabaseAdmin();
 
   const { data: app } = await db

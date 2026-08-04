@@ -5,6 +5,8 @@ import {
   PLANS,
   FILLABLE_FIELD_TYPES,
   isDemographicField,
+  ReviewMetricsSchema,
+  type ReviewMetrics,
   currentUsagePeriod,
   type Field,
   type PlanId,
@@ -115,7 +117,7 @@ async function approveOne(userId: string, applicationId: string): Promise<string
 
   const { data: app } = await admin
     .from("applications")
-    .select("id, user_id, status, unresolved_fields, form_schema, jobs!inner(ats_type)")
+    .select("id, user_id, status, unresolved_fields, form_schema, jobs!inner(ats_type, closed_at)")
     .eq("id", applicationId)
     .eq("user_id", userId)
     .single();
@@ -123,6 +125,15 @@ async function approveOne(userId: string, applicationId: string): Promise<string
   if (app.status !== "draft") {
     if (app.status === "needs_review") return "answer the required fields first";
     return `already ${app.status}`;
+  }
+
+  // The posting can close between queueing and approval. The submit worker
+  // already fails gracefully on a dead form (DECISIONS.md D3), but only after
+  // claiming a daily-cap slot and spending a browser run — and the user has
+  // spent their attention reviewing something that was never going to send.
+  // If the poller has already recorded closed_at, say so now.
+  if ((app.jobs as unknown as { closed_at: string | null }).closed_at) {
+    return "this posting has closed since it was queued — nothing to send, so Skip it";
   }
 
   // A required field type the fill layer can't drive (consent checkbox, date
@@ -155,7 +166,25 @@ async function approveOne(userId: string, applicationId: string): Promise<string
   return null;
 }
 
-export async function approveApplication(applicationId: string): Promise<ActionResult> {
+/**
+ * Review-quality metrics are stored on the way through (C2 / D6). They are
+ * advisory data, never a gate: a bad-looking review must not block the user's
+ * own application, so a malformed payload is dropped rather than rejected.
+ */
+async function recordReviewMetrics(applicationId: string, metrics?: ReviewMetrics): Promise<void> {
+  if (!metrics) return;
+  const parsed = ReviewMetricsSchema.safeParse(metrics);
+  if (!parsed.success) return;
+  await createAdminClient()
+    .from("applications")
+    .update({ review_metrics: parsed.data })
+    .eq("id", applicationId);
+}
+
+export async function approveApplication(
+  applicationId: string,
+  metrics?: ReviewMetrics,
+): Promise<ActionResult> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -167,6 +196,7 @@ export async function approveApplication(applicationId: string): Promise<ActionR
 
   const error = await approveOne(user.id, applicationId);
   if (error) return { error };
+  await recordReviewMetrics(applicationId, metrics);
 
   revalidatePath("/applications", "page");
   return { approved: 1 };
@@ -180,11 +210,16 @@ export async function approveAllDrafts(): Promise<ActionResult> {
   if (!user) return { error: "Not signed in" };
 
   const admin = createAdminClient();
+  // Closed postings are excluded here, not just refused by approveOne: they
+  // would otherwise inflate the count fed to checkLimits and consume slots in
+  // the slice below, so the user would get fewer real submissions than their
+  // cap allows — and never be told why.
   const { data: drafts } = await admin
     .from("applications")
-    .select("id")
+    .select("id, jobs!inner(closed_at)")
     .eq("user_id", user.id)
     .eq("status", "draft")
+    .is("jobs.closed_at", null)
     .order("created_at", { ascending: true });
   if (!drafts?.length) return { error: "No drafts ready to approve" };
 
@@ -194,7 +229,19 @@ export async function approveAllDrafts(): Promise<ActionResult> {
   let approved = 0;
   for (const draft of drafts.slice(0, limits.allowed)) {
     const error = await approveOne(user.id, draft.id);
-    if (!error) approved++;
+    if (error) continue;
+    approved++;
+    // Recorded as a genuine zero-second, never-opened review rather than left
+    // blank. An unreviewed approval is the single most important observation
+    // D6 asks for; omitting it would flatter the median into meaninglessness.
+    await recordReviewMetrics(draft.id, {
+      openedCount: 0,
+      seconds: 0,
+      fieldsEdited: 0,
+      aiFieldsEdited: 0,
+      coverLetterEdited: false,
+      bulk: true,
+    });
   }
 
   revalidatePath("/applications", "page");

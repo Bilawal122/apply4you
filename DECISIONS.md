@@ -135,6 +135,11 @@ a near-prerequisite. Until it exists, **no visa-dependent friends are invited**
   compared to manual applications), cost per application (<$0.02 watch line),
   median time-in-review and edit-rate on AI free text (**<10s median review is
   a red flag equal to a failed submission** — the review gate must stay real).
+  *Instrumented 2026-08-04 (IMPROVEMENTS C2): `applications.review_metrics`,
+  surfaced as the dashboard's Review quality panel. Bulk approvals count as a
+  real 0-second review rather than being excluded, so the median cannot be
+  flattered by the one behaviour this metric exists to catch. Held below 5
+  samples — a median off two approvals is noise.*
 - **Kill/pivot condition, decided now:** if after ~25 genuine attempts (plus
   the fixes they trigger) Greenhouse submission success can't reach 90%,
   headless submit is the wrong architecture — pivot to assisted-fill

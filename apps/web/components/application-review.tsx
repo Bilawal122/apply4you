@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import type { Field, ResolvedCv, ResolvedValues, UnresolvedField } from "@apply4you/shared";
+import { useEffect, useRef, useState, useTransition } from "react";
+import type { Field, ResolvedCv, ResolvedValues, ReviewMetrics, UnresolvedField } from "@apply4you/shared";
 import {
   approveApplication,
   fillFieldWithAi,
@@ -31,6 +31,10 @@ export interface ReviewApp {
   unresolvedFields: UnresolvedField[];
   /** Per-job tailored CV, already resolved against the live profile (task #40). */
   tailoredCv: ResolvedCv | null;
+  /** fieldId -> "profile" | "library" | "ai", recorded at resolve time. */
+  answerSources: Record<string, string>;
+  /** The posting vanished from its board after this was queued. */
+  jobClosed: boolean;
 }
 
 function isCoverLetterField(f: Field): boolean {
@@ -126,6 +130,45 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
   const [edited, setEdited] = useState<Set<string>>(new Set());
   // Which field is currently being drafted, and any per-field message.
   const [drafting, setDrafting] = useState<string | null>(null);
+  // Fields the user asked the AI to draft. Tracked apart from `edited` because
+  // accepting a machine draft is the opposite of editing machine text — folding
+  // the two together would inflate the D6 edit-rate with AI output.
+  const [aiDrafted, setAiDrafted] = useState<Set<string>>(new Set());
+
+  /*
+   * Review-quality instrumentation (C2 / DECISIONS.md D6). Time is accumulated
+   * only while the card is actually expanded, so leaving the page open on a
+   * collapsed list doesn't manufacture review time that never happened.
+   */
+  const openedAt = useRef<number | null>(null);
+  const secondsOpen = useRef(0);
+  const openedCount = useRef(0);
+
+  useEffect(() => {
+    if (expanded) {
+      openedAt.current = Date.now();
+      openedCount.current += 1;
+    } else if (openedAt.current !== null) {
+      secondsOpen.current += (Date.now() - openedAt.current) / 1000;
+      openedAt.current = null;
+    }
+  }, [expanded]);
+
+  const collectMetrics = (bulk = false): ReviewMetrics => {
+    const live = openedAt.current !== null ? (Date.now() - openedAt.current) / 1000 : 0;
+    // Accepting an AI draft is not the user editing AI text.
+    const editedFields = [...edited].filter((id) => id !== "__cl" && !aiDrafted.has(id));
+    return {
+      openedCount: openedCount.current,
+      seconds: Math.round(secondsOpen.current + live),
+      fieldsEdited: editedFields.length,
+      // Only counts fields the machine actually wrote — provenance comes from
+      // answer_sources recorded at resolve time, never inferred here.
+      aiFieldsEdited: editedFields.filter((id) => app.answerSources[id] === "ai").length,
+      coverLetterEdited: edited.has("__cl"),
+      bulk,
+    };
+  };
   const [fieldNote, setFieldNote] = useState<Record<string, string>>({});
 
   const draftAnswer = (fieldId: string) => {
@@ -135,7 +178,12 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
       const res = await fillFieldWithAi(app.id, fieldId);
       if (res.value) {
         setValues((v) => ({ ...v, [fieldId]: res.value! }));
-        setEdited((e) => new Set(e).add(fieldId));
+        setAiDrafted((a) => new Set(a).add(fieldId));
+        setEdited((e) => {
+          const next = new Set(e);
+          next.delete(fieldId); // it is the machine's words now, not the user's
+          return next;
+        });
         setDirty(true);
       } else if (res.error) {
         setFieldNote((n) => ({ ...n, [fieldId]: res.error! }));
@@ -174,10 +222,21 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
     setDirty(true);
   };
 
-  /** Honest provenance: only what the stored data actually supports. */
+  /**
+   * Honest provenance: only what the stored data actually supports.
+   *
+   * `answer_sources` is the server's own record of who wrote each answer, so it
+   * outranks the "came from your profile" fallback. Without consulting it, an
+   * AI-drafted answer read back after a reload was labelled PROFILE — the UI
+   * contradicting a fact the database already held, on the one label whose
+   * entire job is to be trustworthy.
+   */
   const sourceOf = (id: string, value: string): Source => {
+    if (aiDrafted.has(id)) return "ai";
     if (edited.has(id)) return "you";
     if (!value) return "unknown";
+    const recorded = app.answerSources[id];
+    if (recorded === "ai" || recorded === "library" || recorded === "profile") return recorded;
     return "profile";
   };
 
@@ -204,9 +263,9 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
       const mustSyncStatus = dirty || app.status === "needs_review";
       const res = mustSyncStatus
         ? await saveApplicationFields(app.id, payload(), coverLetter || null).then((r) =>
-            r.error ? r : approveApplication(app.id),
+            r.error ? r : approveApplication(app.id, collectMetrics()),
           )
-        : await approveApplication(app.id);
+        : await approveApplication(app.id, collectMetrics());
       setMessage(res.error ?? "Approved — submitting soon");
       setActing(null);
     });
@@ -233,7 +292,11 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
           <span className="ml-2 text-sm text-ink-soft">{app.company}</span>
         </div>
         <div className="flex shrink-0 items-center gap-3">
-          {requiredGaps > 0 ? (
+          {app.jobClosed ? (
+            <span className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-danger">
+              posting closed
+            </span>
+          ) : requiredGaps > 0 ? (
             <span className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-attention">
               {requiredGaps} answer{requiredGaps === 1 ? "" : "s"} needed
             </span>
@@ -252,6 +315,14 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
             The packet (task #40): CV, then letter, then every answer — the
             whole artifact an employer receives, in the order they'd read it.
           */}
+          {app.jobClosed && (
+            <p className="mb-4 rounded-[3px] border border-danger/30 bg-danger-soft px-3 py-2 text-[13px] text-ink">
+              <span className="font-medium">This posting has closed.</span> It disappeared from the
+              company&apos;s job board after you queued it, so there is nothing left to send. Skip it —
+              approving would spend one of your applications on a form that no longer exists.
+            </p>
+          )}
+
           {app.tailoredCv && <TailoredCvBlock cv={app.tailoredCv} applicationId={app.id} />}
 
           <div className="mb-4 flex items-center justify-between gap-3">
@@ -382,14 +453,16 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
             <button
               type="button"
               onClick={approve}
-              disabled={pending || requiredGaps > 0}
+              disabled={pending || requiredGaps > 0 || app.jobClosed}
               className={btnPrimary}
               title={
-                requiredGaps > 0
-                  ? `Still needed: ${[...openRequired.map((f) => f.label), ...(coverLetterMissing ? ["Cover letter"] : [])]
-                      .slice(0, 3)
-                      .join(", ")}`
-                  : undefined
+                app.jobClosed
+                  ? "This posting has closed — there is nothing left to submit to"
+                  : requiredGaps > 0
+                    ? `Still needed: ${[...openRequired.map((f) => f.label), ...(coverLetterMissing ? ["Cover letter"] : [])]
+                        .slice(0, 3)
+                        .join(", ")}`
+                    : undefined
               }
             >
               {acting === "approve" && <Spinner />}

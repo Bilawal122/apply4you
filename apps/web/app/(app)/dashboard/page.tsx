@@ -1,5 +1,11 @@
 import Link from "next/link";
-import { currentUsagePeriod } from "@apply4you/shared";
+import {
+  REVIEW_RED_FLAG_SECONDS,
+  ReviewMetricsSchema,
+  currentUsagePeriod,
+  summariseReviews,
+  type ReviewMetrics,
+} from "@apply4you/shared";
 import { createClient } from "@/lib/supabase/server";
 import { AutoApplyButton } from "@/components/auto-apply-button";
 import { ScoreBadge, SponsorBadge, cardCls } from "@/components/ui";
@@ -60,6 +66,7 @@ export default async function DashboardPage() {
     { data: matchRows },
     { data: appliedRows },
     { data: prefs },
+    { data: reviewRows },
   ] = await Promise.all([
     supabase.from("applications").select("id", { count: "exact", head: true }).eq("status", "submitted"),
     supabase
@@ -83,6 +90,13 @@ export default async function DashboardPage() {
       .overrideTypes<MatchRow[]>(),
     supabase.from("applications").select("job_id"),
     supabase.from("preferences").select("daily_cap").single<{ daily_cap: number }>(),
+    supabase
+      .from("applications")
+      .select("review_metrics")
+      .not("review_metrics", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(100)
+      .overrideTypes<{ review_metrics: unknown }[]>(),
   ]);
 
   // Usage is submissions in the current rolling period (auto-resets) — matches
@@ -103,6 +117,15 @@ export default async function DashboardPage() {
   const applied = new Set((appliedRows ?? []).map((r) => r.job_id as string));
   const recommended = (matchRows ?? []).filter((m) => m.jobs && !applied.has(m.jobs.id));
   const dailyCap = prefs?.daily_cap ?? 10;
+
+  // Review quality (DECISIONS.md D6). Rows approved before the instrumentation
+  // existed carry no metrics and are simply absent from the sample.
+  const review = summariseReviews(
+    (reviewRows ?? [])
+      .map((r) => ReviewMetricsSchema.safeParse(r.review_metrics))
+      .filter((p): p is { success: true; data: ReviewMetrics } => p.success)
+      .map((p) => p.data),
+  );
 
   return (
     <div className="flex flex-col gap-8">
@@ -138,6 +161,58 @@ export default async function DashboardPage() {
           />
         )}
       </div>
+
+      {review.sample > 0 && (
+        <section>
+          <h2 className="display mb-3 text-lg text-ink">Review quality</h2>
+          {/* Swapped wholesale rather than appended to cardCls: two competing
+              bg-/border- utilities are the same specificity, so which one wins
+              is down to CSS source order, not the order they're written here. */}
+          <div
+            className={`p-4 ${
+              review.redFlag
+                ? "rounded-[3px] border border-attention/40 bg-attention-soft"
+                : cardCls
+            }`}
+          >
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <div>
+                <p className="label-mono">Median review</p>
+                <p className="mt-1.5 font-mono text-2xl font-semibold tabular-nums leading-none text-ink">
+                  {review.medianSeconds}s
+                </p>
+              </div>
+              <div>
+                <p className="label-mono">You changed something</p>
+                <p className="mt-1.5 font-mono text-2xl font-semibold tabular-nums leading-none text-ink">
+                  {Math.round(review.editRate * 100)}%
+                </p>
+              </div>
+              <div>
+                <p className="label-mono">Approved unopened</p>
+                <p className="mt-1.5 font-mono text-2xl font-semibold tabular-nums leading-none text-ink">
+                  {Math.round(review.unopenedRate * 100)}%
+                </p>
+              </div>
+            </div>
+            <p className="mt-3 border-t border-line pt-3 text-[13px] text-ink-soft">
+              {review.redFlag ? (
+                <>
+                  <span className="font-medium text-attention">
+                    Median review is under {REVIEW_RED_FLAG_SECONDS}s.
+                  </span>{" "}
+                  DECISIONS.md D6 treats that as a red flag equal to a failed submission — the review
+                  gate is the product, and at this speed it isn&apos;t really happening. Worth slowing
+                  down before the friends beta.
+                </>
+              ) : (
+                <>Across your last {review.sample} approval{review.sample === 1 ? "" : "s"}. D6 wants a
+                median above {REVIEW_RED_FLAG_SECONDS}s — a gate nobody reads is not a gate.</>
+              )}
+            </p>
+          </div>
+        </section>
+      )}
 
       <section>
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
