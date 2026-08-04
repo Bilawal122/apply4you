@@ -149,7 +149,24 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
   const editableFields = app.formSchema.filter(
     (f) => f.type !== "file" && !isCoverLetterField(f) && f.id !== "resume_text" && !f.id.startsWith("eeo["),
   );
-  const requiredGaps = app.unresolvedFields.filter((u) => u.required && u.id !== clField?.id).length;
+
+  /**
+   * Gaps computed from what is on screen RIGHT NOW, not from the status the
+   * server last wrote.
+   *
+   * Before this, Approve stayed disabled while `status === "needs_review"`, and
+   * status was only recomputed inside saveApplicationFields — so filling the
+   * missing answer meant clicking Save, waiting for a round trip, and only then
+   * being allowed to Approve. That friction landed on exactly the applications
+   * needing the most human attention.
+   *
+   * The gate itself is untouched: approve() still saves first when dirty, and
+   * approveOne still refuses any row that is not `draft` server-side. This only
+   * stops the button lying about whether the user has finished.
+   */
+  const openRequired = editableFields.filter((f) => f.required && !String(values[f.id] ?? "").trim());
+  const coverLetterMissing = Boolean(clField?.required) && !coverLetter.trim();
+  const requiredGaps = openRequired.length + (coverLetterMissing ? 1 : 0);
 
   const setValue = (id: string, value: string) => {
     setValues((v) => ({ ...v, [id]: value }));
@@ -180,7 +197,12 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
   const approve = () => {
     setActing("approve");
     startTransition(async () => {
-      const res = dirty
+      // Save first whenever the server could still be holding `needs_review` —
+      // approveOne refuses anything that isn't `draft`, and saving is what
+      // recomputes the status. Not just when dirty: a gap can be closed by a
+      // library answer or an AI draft that never marked the form dirty.
+      const mustSyncStatus = dirty || app.status === "needs_review";
+      const res = mustSyncStatus
         ? await saveApplicationFields(app.id, payload(), coverLetter || null).then((r) =>
             r.error ? r : approveApplication(app.id),
           )
@@ -211,7 +233,7 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
           <span className="ml-2 text-sm text-ink-soft">{app.company}</span>
         </div>
         <div className="flex shrink-0 items-center gap-3">
-          {app.status === "needs_review" ? (
+          {requiredGaps > 0 ? (
             <span className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-attention">
               {requiredGaps} answer{requiredGaps === 1 ? "" : "s"} needed
             </span>
@@ -360,9 +382,15 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
             <button
               type="button"
               onClick={approve}
-              disabled={pending || app.status === "needs_review"}
+              disabled={pending || requiredGaps > 0}
               className={btnPrimary}
-              title={app.status === "needs_review" ? "Fill the required answers and save first" : undefined}
+              title={
+                requiredGaps > 0
+                  ? `Still needed: ${[...openRequired.map((f) => f.label), ...(coverLetterMissing ? ["Cover letter"] : [])]
+                      .slice(0, 3)
+                      .join(", ")}`
+                  : undefined
+              }
             >
               {acting === "approve" && <Spinner />}
               {acting === "approve" ? "Approving…" : "Approve & submit"}

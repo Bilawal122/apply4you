@@ -46,6 +46,8 @@ export default function OnboardingPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stage, setStage] = useState(0);
+  // True when the user is typing their details in rather than having them parsed.
+  const [manual, setManual] = useState(false);
 
   // Staged copy keeps the 10-20s parse from feeling frozen.
   useEffect(() => {
@@ -74,14 +76,27 @@ export default function OnboardingPage() {
     }
   }
 
+  /**
+   * Escape hatch (IMPROVEMENTS D1). A parse failure used to drop the user back
+   * on the same upload box with an error string and no way forward — one bad
+   * PDF dead-ended the entire funnel at step 1. They can now type it in.
+   */
+  function startManual() {
+    setProfile({ ...EMPTY_PROFILE });
+    setManual(true);
+    setError(null);
+    setPhase("review");
+  }
+
   if (phase === "review" && profile) {
     return (
       <div className="mx-auto max-w-3xl">
         <OnboardingSteps current={2} />
         <h1 className="text-xl font-semibold text-ink">Review your profile</h1>
         <p className="mb-6 mt-1 text-sm text-ink-soft">
-          We extracted this from your resume. Fix anything that&apos;s off — every application is filled from this
-          profile, and we never invent answers that aren&apos;t in it.
+          {manual
+            ? "Fill in what you can — name, contact details and your most recent role are enough to start. Every application is filled from this profile, and we never invent answers that aren't in it."
+            : "We extracted this from your resume. Fix anything that's off — every application is filled from this profile, and we never invent answers that aren't in it."}
         </p>
         <ProfileForm initial={profile} submitLabel="Save and continue" redirectTo="preferences" />
       </div>
@@ -119,7 +134,27 @@ export default function OnboardingPage() {
         </label>
       )}
 
-      {error && <p className="text-center text-sm text-danger">{error}</p>}
+      {error && (
+        <div className="rounded-[3px] border border-danger/30 bg-danger-soft px-4 py-3 text-center">
+          <p className="text-sm text-danger">{error}</p>
+          <p className="mt-1.5 text-sm text-ink-soft">
+            Some PDFs don&apos;t read cleanly. Try a different file, or{" "}
+            <button type="button" onClick={startManual} className="font-medium text-ink underline decoration-line underline-offset-2">
+              enter your details by hand
+            </button>
+            .
+          </p>
+        </div>
+      )}
+
+      {phase !== "parsing" && !error && (
+        <p className="text-center text-xs text-ink-soft">
+          No CV handy?{" "}
+          <button type="button" onClick={startManual} className="underline decoration-line underline-offset-2 hover:text-ink">
+            Enter your details by hand
+          </button>
+        </p>
+      )}
     </div>
   );
 }
