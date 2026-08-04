@@ -98,14 +98,15 @@ export function PreferencesForm({ initial, redirectTo }: { initial: Preferences;
         onChange={(v) => set("titles", v)}
       />
       <ChipInput
-        label="Locations"
+        label="Locations — not used for matching yet"
+        hint="Stored for later. Ranking currently uses titles, seniority, industries, skills and your CV — filter the feed by location in the meantime."
         placeholder="San Francisco, New York, Remote"
         value={prefs.locations}
         onChange={(v) => set("locations", v)}
       />
 
       <div>
-        <label className={labelCls}>Work model</label>
+        <label className={labelCls}>Work model — not used for matching yet</label>
         <div className="mt-1 flex gap-4">
           {WORK_MODELS.map((m) => (
             <label key={m} className="flex items-center gap-1.5 text-sm">
@@ -124,7 +125,11 @@ export function PreferencesForm({ initial, redirectTo }: { initial: Preferences;
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className={labelCls}>Salary floor (USD/year, blank for none)</label>
+          <label className={labelCls}>Salary floor — not used for matching yet</label>
+          <p className="mb-1.5 text-xs text-ink-soft">
+            Most employers publish no salary at all (Greenhouse and Workable expose none), so
+            filtering on it would hide almost everything. Shown on a job when the employer states it.
+          </p>
           <input
             className={inputCls}
             type="number"

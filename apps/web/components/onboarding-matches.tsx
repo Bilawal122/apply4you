@@ -179,7 +179,7 @@ export function OnboardingMatches() {
       <p className="mt-3 text-sm text-ink-soft">
         {phase === "queuing"
           ? `${matches} matches found — picking the best ${Math.min(AUTO_QUEUE_MAX, matches)} to start with.`
-          : "We match on your titles, locations, salary floor and skills. Usually under a minute."}
+          : "We match on your target titles, seniority, industries and skills, and on your CV itself. Usually under a minute."}
       </p>
     </div>
   );

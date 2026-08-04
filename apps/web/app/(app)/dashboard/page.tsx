@@ -125,7 +125,10 @@ export default async function DashboardPage() {
         <Stat label="Submitted total" value={totalSubmitted ?? 0} />
         <Stat label="Submitted today" value={submittedToday ?? 0} />
         <Stat label="Waiting for review" value={pendingReview ?? 0} />
-        <Stat label="Jobs matched" value={matched ?? 0} />
+        {/* Counts what the feed shows — matches you have NOT already queued.
+            The raw job_matches total includes applied jobs and disagreed with the
+            feed's own number under the same label. */}
+        <Stat label="Jobs to review" value={recommended.length} hint={`${matched ?? 0} matched in total`} />
         <Stat label="Failed" value={failed ?? 0} hint={failed ? "apply manually" : undefined} />
         {sub && (
           <Stat

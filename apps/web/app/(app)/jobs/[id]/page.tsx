@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { QueueButton } from "@/components/queue-button";
 import { ScoreBadge, SponsorBadge, StatusBadge, cardCls } from "@/components/ui";
 import { REGISTER_URL, type SponsorVerdict } from "@/lib/sponsors";
+import { formatSalary, salaryExtras } from "@/lib/salary";
 
 interface JobDetail {
   id: string;
@@ -15,6 +16,11 @@ interface JobDetail {
   ats_type: string;
   posted_at: string | null;
   closed_at: string | null;
+  salary_min: number | null;
+  salary_max: number | null;
+  salary_currency: string | null;
+  salary_period: string | null;
+  salary_summary: string | null;
   sponsor_verdict: SponsorVerdict | null;
 }
 
@@ -25,7 +31,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const [{ data: job }, { data: match }, { data: application }] = await Promise.all([
     supabase
       .from("jobs")
-      .select("id, title, company, location, description, apply_url, ats_type, posted_at, closed_at, sponsor_verdict")
+      .select("id, title, company, location, description, apply_url, ats_type, posted_at, closed_at, sponsor_verdict, salary_min, salary_max, salary_currency, salary_period, salary_summary")
       .eq("id", id)
       .single<JobDetail>(),
     supabase.from("job_matches").select("score, reason").eq("job_id", id).maybeSingle<{ score: number; reason: string | null }>(),
@@ -69,6 +75,27 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             <QueueButton jobId={job.id} />
           )}
         </div>
+      </div>
+
+      {/* Pay, exactly as the employer published it — or a plain statement that
+          they didn't. Greenhouse and Workable expose no compensation field at
+          all, so "not stated" is the honest majority case, never an estimate. */}
+      <div className={`${cardCls} mt-4 p-3`}>
+        {formatSalary(job) ? (
+          <>
+            <p className="text-sm text-ink">
+              <span className="font-mono text-xs uppercase text-accent">salary</span>{" "}
+              <span className="font-mono font-medium">{formatSalary(job)}</span>
+              {salaryExtras(job) && <span className="text-ink-soft"> · {salaryExtras(job)}</span>}
+            </p>
+            <p className="mt-1 text-xs text-ink-soft">Published by the employer on the job posting.</p>
+          </>
+        ) : (
+          <p className="text-sm text-ink-soft">
+            <span className="font-mono text-xs uppercase text-ink-faint">salary</span> — not stated by
+            the employer. We don&apos;t estimate one.
+          </p>
+        )}
       </div>
 
       {match?.reason && (
