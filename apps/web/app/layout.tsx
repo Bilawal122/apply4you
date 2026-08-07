@@ -1,24 +1,25 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
+import { Manrope, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
 /*
-  One super-family, two voices. IBM Plex was drawn for institutions that have
-  to be believed — which is the whole job here. Sans carries anything a person
-  said; Mono carries anything the machine produced. Same skeleton, different
-  register, so the distinction reads as deliberate rather than decorative.
+  Two voices, deliberately unrelated. Manrope is warm and tightly-set — it
+  carries anything a person said, and takes the heavy display weights the
+  headlines need. JetBrains Mono carries anything the machine produced: scores,
+  counts, statuses, timestamps, provenance. The contrast between them is the
+  whole signal, so it has to be visible at a glance.
 */
-const plexSans = IBM_Plex_Sans({
+const sans = Manrope({
   variable: "--font-sans-src",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700", "800"],
   display: "swap",
 });
 
-const plexMono = IBM_Plex_Mono({
+const mono = JetBrains_Mono({
   variable: "--font-mono-src",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["400", "500"],
   display: "swap",
 });
 
@@ -34,7 +35,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${plexSans.variable} ${plexMono.variable} h-full antialiased`}>
+    <html lang="en" className={`${sans.variable} ${mono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

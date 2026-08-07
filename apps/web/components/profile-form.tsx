@@ -3,11 +3,25 @@
 import { useActionState, useState } from "react";
 import type { Profile, WorkHistoryEntry, EducationEntry, ProjectEntry } from "@apply4you/shared";
 import { saveProfile, type SaveState } from "@/app/(app)/actions";
-import { btnPrimary, inputCls, labelCls } from "@/components/ui";
+import { Spinner, btnPrimary, btnSecondarySm, inputCls, insetCls, labelCls } from "@/components/ui";
 
 const emptyJob: WorkHistoryEntry = { company: "", title: "", start: "", end: "present", bullets: [] };
 const emptyEdu: EducationEntry = { school: "", degree: "", field: "", start: "", end: "" };
 const emptyProject: ProjectEntry = { name: "", tech: "", url: "", bullets: [] };
+
+/**
+ * Sections are separated by the same hairline a ruled register uses, so the
+ * form reads as one continuous list of facts rather than a stack of boxes.
+ * The first section gets no rule — it opens the card.
+ */
+const ruledSection = "border-t border-line-soft pt-7";
+
+/** A repeated entry (a role, a project, a degree) is an inset inside the card. */
+const entryCls = `${insetCls} p-4`;
+
+/** Removing an unsaved entry is reversible-but-destructive: brick, not a pill. */
+const removeCls =
+  "text-[12px] font-semibold text-danger underline underline-offset-2 transition-colors hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger";
 
 export function ProfileForm({
   initial,
@@ -43,11 +57,11 @@ export function ProfileForm({
     );
 
   return (
-    <form action={action} className="flex flex-col gap-8">
+    <form action={action} className="flex flex-col gap-7">
       <input type="hidden" name="profile" value={JSON.stringify(profile)} />
       {redirectTo && <input type="hidden" name="redirectTo" value={redirectTo} />}
 
-      <section className="grid grid-cols-2 gap-4">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label className={labelCls}>First name</label>
           <input className={inputCls} value={profile.firstName} onChange={(e) => set("firstName", e.target.value)} />
@@ -84,7 +98,7 @@ export function ProfileForm({
         </div>
       </section>
 
-      <section className="grid grid-cols-3 gap-4">
+      <section className={`grid grid-cols-1 gap-4 sm:grid-cols-3 ${ruledSection}`}>
         <div>
           <label className={labelCls}>LinkedIn URL</label>
           <input
@@ -111,21 +125,21 @@ export function ProfileForm({
         </div>
       </section>
 
-      <section>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Work history</h2>
+      <section className={ruledSection}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="label-mono">Work history</h2>
           <button
             type="button"
-            className="text-sm text-accent underline"
+            className={btnSecondarySm}
             onClick={() => set("workHistory", [...profile.workHistory, { ...emptyJob }])}
           >
-            + Add role
+            Add role
           </button>
         </div>
         <div className="flex flex-col gap-4">
           {profile.workHistory.map((job, i) => (
-            <div key={i} className="rounded-lg border border-line bg-card p-4">
-              <div className="grid grid-cols-2 gap-3">
+            <div key={i} className={entryCls}>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <input className={inputCls} placeholder="Company" value={job.company} onChange={(e) => setJob(i, { company: e.target.value })} />
                 <input className={inputCls} placeholder="Title" value={job.title} onChange={(e) => setJob(i, { title: e.target.value })} />
                 <input className={inputCls} placeholder="Start (YYYY-MM)" value={job.start} onChange={(e) => setJob(i, { start: e.target.value })} />
@@ -140,7 +154,7 @@ export function ProfileForm({
               />
               <button
                 type="button"
-                className="mt-2 text-xs text-danger underline"
+                className={`${removeCls} mt-3`}
                 onClick={() => set("workHistory", profile.workHistory.filter((_, idx) => idx !== i))}
               >
                 Remove
@@ -150,26 +164,26 @@ export function ProfileForm({
         </div>
       </section>
 
-      <section>
-        <div className="mb-2 flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold">Projects</h2>
-            <p className="text-xs text-ink-soft">
+      <section className={ruledSection}>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="label-mono">Projects</h2>
+            <p className="mt-1.5 text-[13px] leading-[1.5] text-ink-soft">
               Side projects, open source, portfolio work. Often the strongest evidence you have.
             </p>
           </div>
           <button
             type="button"
-            className="text-sm text-accent underline"
+            className={btnSecondarySm}
             onClick={() => set("projects", [...profile.projects, { ...emptyProject }])}
           >
-            + Add project
+            Add project
           </button>
         </div>
         <div className="flex flex-col gap-4">
           {profile.projects.map((pr, i) => (
-            <div key={i} className="rounded-lg border border-line bg-card p-4">
-              <div className="grid grid-cols-2 gap-3">
+            <div key={i} className={entryCls}>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <input className={inputCls} placeholder="Project name" value={pr.name} onChange={(e) => setProject(i, { name: e.target.value })} />
                 <input className={inputCls} placeholder="Tech / stack" value={pr.tech} onChange={(e) => setProject(i, { tech: e.target.value })} />
               </div>
@@ -183,7 +197,7 @@ export function ProfileForm({
               />
               <button
                 type="button"
-                className="mt-2 text-xs text-danger underline"
+                className={`${removeCls} mt-3`}
                 onClick={() => set("projects", profile.projects.filter((_, idx) => idx !== i))}
               >
                 Remove
@@ -193,20 +207,20 @@ export function ProfileForm({
         </div>
       </section>
 
-      <section>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Education</h2>
+      <section className={ruledSection}>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="label-mono">Education</h2>
           <button
             type="button"
-            className="text-sm text-accent underline"
+            className={btnSecondarySm}
             onClick={() => set("education", [...profile.education, { ...emptyEdu }])}
           >
-            + Add education
+            Add education
           </button>
         </div>
         <div className="flex flex-col gap-4">
           {profile.education.map((edu, i) => (
-            <div key={i} className="grid grid-cols-2 gap-3 rounded-lg border border-line bg-card p-4">
+            <div key={i} className={`${entryCls} grid grid-cols-1 gap-3 sm:grid-cols-2`}>
               <input className={inputCls} placeholder="School" value={edu.school} onChange={(e) => setEdu(i, { school: e.target.value })} />
               <input className={inputCls} placeholder="Degree" value={edu.degree} onChange={(e) => setEdu(i, { degree: e.target.value })} />
               <input className={inputCls} placeholder="Field of study" value={edu.field} onChange={(e) => setEdu(i, { field: e.target.value })} />
@@ -216,7 +230,7 @@ export function ProfileForm({
               </div>
               <button
                 type="button"
-                className="text-left text-xs text-danger underline"
+                className={`${removeCls} text-left`}
                 onClick={() => set("education", profile.education.filter((_, idx) => idx !== i))}
               >
                 Remove
@@ -226,7 +240,7 @@ export function ProfileForm({
         </div>
       </section>
 
-      <section>
+      <section className={ruledSection}>
         <label className={labelCls}>Skills (comma-separated)</label>
         <textarea
           className={inputCls}
@@ -236,16 +250,16 @@ export function ProfileForm({
         />
       </section>
 
-      <section>
+      <section className={ruledSection}>
         <label className={labelCls}>
           Professional summary (leave blank to auto-generate from your profile)
         </label>
         <textarea className={inputCls} rows={4} value={profile.summary} onChange={(e) => set("summary", e.target.value)} />
       </section>
 
-      <section>
+      <section className={ruledSection}>
         <label className={labelCls}>Additional info (optional)</label>
-        <p className="mb-1 text-xs text-ink-soft">
+        <p className="mb-2.5 text-[13px] leading-[1.5] text-ink-soft">
           Anything a CV can&apos;t capture: career goals, constraints, things you&apos;d want mentioned
           in a cover letter, context for gaps. The AI reads this for every application — grounded only
           in what you write here, never invented.
@@ -259,10 +273,15 @@ export function ProfileForm({
         />
       </section>
 
-      {state && "error" in state && <p className="text-sm text-danger">{state.error}</p>}
-      {state && "ok" in state && <p className="text-sm text-accent">Saved.</p>}
+      {state && "error" in state && (
+        <p className="rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{state.error}</p>
+      )}
+      {state && "ok" in state && (
+        <p className="rounded-xl bg-accent-soft px-4 py-3 text-sm text-accent">Saved.</p>
+      )}
 
       <button type="submit" disabled={pending} className={`${btnPrimary} self-start`}>
+        {pending && <Spinner />}
         {pending ? "Saving…" : submitLabel}
       </button>
     </form>

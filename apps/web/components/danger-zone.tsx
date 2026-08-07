@@ -3,7 +3,20 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Spinner } from "@/components/ui";
+import { Spinner, btnGhost, btnSecondarySm, cardCls } from "@/components/ui";
+
+/*
+  The card is white like every other card, but the delete path stays brick from
+  the first click to the last: an outlined brick pill, brick confirmation copy,
+  then a solid brick pill. Softening this into a neutral "Manage account" row
+  would make an irreversible action look like a settings toggle.
+*/
+
+const btnDangerOutline =
+  "inline-flex items-center justify-center gap-2 rounded-full border border-danger/40 bg-card px-[18px] py-2.5 text-[13.5px] font-semibold text-danger transition-colors hover:border-danger hover:bg-danger-soft active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger";
+
+const btnDangerSolid =
+  "inline-flex items-center justify-center gap-2 rounded-full bg-danger px-[18px] py-2.5 text-[13.5px] font-semibold text-white transition-[filter,transform] hover:brightness-110 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger disabled:opacity-50 disabled:pointer-events-none";
 
 export function DangerZone() {
   const [confirming, setConfirming] = useState(false);
@@ -12,26 +25,23 @@ export function DangerZone() {
   const router = useRouter();
 
   return (
-    <div className="mt-12 rounded-lg border border-red-200 bg-red-50/50 p-4">
-      <h2 className="text-sm font-semibold text-red-800">Your data</h2>
-      <div className="mt-2 flex flex-wrap items-center gap-3">
-        <a
-          href="/api/account/export"
-          className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium transition-colors hover:border-neutral-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
-        >
+    <div className={`${cardCls} mt-10 px-5 py-6 sm:px-7`}>
+      <h2 className="label-mono">Your data</h2>
+      <p className="mt-2 max-w-xl text-[14.5px] leading-[1.6] text-ink-body">
+        Take a copy of everything we hold on you, or delete the account and all of it. Deletion is
+        permanent — the files, the applications and the login all go, and we cannot bring them back.
+      </p>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <a href="/api/account/export" className={btnSecondarySm}>
           Export all my data
         </a>
         {!confirming ? (
-          <button
-            type="button"
-            onClick={() => setConfirming(true)}
-            className="rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 transition-colors hover:border-red-500 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
-          >
+          <button type="button" onClick={() => setConfirming(true)} className={btnDangerOutline}>
             Delete my account
           </button>
         ) : (
-          <span className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="text-red-700">Permanently delete everything?</span>
+          <span className="flex flex-wrap items-center gap-3 text-sm">
+            <span className="font-semibold text-danger">Permanently delete everything?</span>
             <button
               type="button"
               disabled={pending}
@@ -58,22 +68,20 @@ export function DangerZone() {
                   }
                 })
               }
-              className="inline-flex items-center gap-2 rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-700 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 disabled:opacity-50"
+              className={btnDangerSolid}
             >
               {pending && <Spinner />}
               {pending ? "Deleting…" : "Yes, delete"}
             </button>
-            <button
-              type="button"
-              onClick={() => setConfirming(false)}
-              className="text-neutral-500 underline transition-colors hover:text-neutral-700"
-            >
+            <button type="button" onClick={() => setConfirming(false)} className={btnGhost}>
               Cancel
             </button>
           </span>
         )}
       </div>
-      {error && <p className="mt-2 text-sm text-red-700">{error}</p>}
+      {error && (
+        <p className="mt-3 rounded-xl bg-danger-soft px-4 py-3 text-sm text-danger">{error}</p>
+      )}
     </div>
   );
 }

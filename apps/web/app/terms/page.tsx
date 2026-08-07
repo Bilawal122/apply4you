@@ -5,7 +5,7 @@ export const metadata = { title: "Terms of Service — Apply4You" };
 export default function TermsPage() {
   return (
     <LegalShell title="Terms of Service" updated="July 2026">
-      <p>
+      <p className="text-[16.5px] leading-[1.65]">
         By using Apply4You you agree to these terms. They describe what the service does, what you&apos;re
         responsible for, and the limits of what we promise.
       </p>

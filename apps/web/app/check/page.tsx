@@ -5,7 +5,17 @@ import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { REGISTER_URL, normalizeCompanyName } from "@/lib/sponsors";
-import { cardCls, inputCls } from "@/components/ui";
+import {
+  Wordmark,
+  Eyebrow,
+  Hollow,
+  Tick,
+  btnPrimary,
+  btnPrimarySm,
+  btnSecondary,
+  btnSecondarySm,
+  cardCls,
+} from "@/components/ui";
 
 /**
  * Free, no-signup UK sponsor-licence checker (task #41, ROADMAP 1.2).
@@ -66,6 +76,33 @@ async function checkerAllowed(): Promise<boolean> {
   });
   if (error) return true; // fail open — a broken limiter must never take the page down
   return data !== false;
+}
+
+/** The one glyph in the search bar; a token can't reach an SVG stroke. */
+function Magnifier() {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      className="h-[18px] w-[18px] shrink-0 text-ink-faint"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      aria-hidden="true"
+    >
+      <circle cx="8.5" cy="8.5" r="5.5" />
+      <path d="M12.7 12.7 17 17" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** A mono-labelled fact from the register. Machine value, so mono value. */
+function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0 max-w-full">
+      <dt className="label-mono">{label}</dt>
+      <dd className="mt-1.5 break-words font-mono text-[13.5px] leading-[1.45] text-ink">{children}</dd>
+    </div>
+  );
 }
 
 export default async function CheckPage({ searchParams }: { searchParams: Promise<CheckParams> }) {
@@ -137,140 +174,203 @@ export default async function CheckPage({ searchParams }: { searchParams: Promis
   const routes = [...new Set(exact.map((r) => r.route).filter(Boolean))] as string[];
   const ratings = [...new Set(exact.map((r) => r.type_rating).filter(Boolean))] as string[];
   const orgNames = [...new Set(exact.map((r) => r.org_name))];
+  // The register's own address column — the only "where" we actually hold.
+  const towns = [...new Set(exact.map((r) => r.town).filter(Boolean))] as string[];
   const skilledWorker = routes.includes("Skilled Worker");
+  const registerDate = exact[0]?.register_date;
+
+  // Subline under the verdict: register locations, plus the honest note that
+  // one employer name can appear as several register entries.
+  const subline = [
+    towns.slice(0, 3).join(" · ") || null,
+    towns.length > 3 ? `+${towns.length - 3} more locations` : null,
+    orgNames.length > 1 ? `+${orgNames.length - 1} related register entries` : null,
+  ].filter(Boolean);
 
   return (
-    <main className="min-h-screen bg-paper">
-      <header className="border-b border-line bg-card">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
-          <Link href="/" className="text-sm font-bold tracking-tight text-ink">
-            Apply<span className="text-accent">4</span>You
+    <main className="flex min-h-screen flex-col bg-paper">
+      <header className="mx-auto flex w-full max-w-5xl items-center justify-between gap-4 px-5 py-5">
+        <Wordmark />
+        <nav className="flex items-center gap-5 sm:gap-7">
+          <Link
+            href="/check"
+            aria-current="page"
+            className="hidden text-[13.5px] font-semibold text-ink sm:inline"
+          >
+            Sponsor checker
           </Link>
           <Link
-            href="/signup"
-            className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-accent/90"
+            href="/login"
+            className="hidden text-[13.5px] text-ink-soft transition-colors hover:text-ink sm:inline"
           >
-            Start free
+            Sign in
           </Link>
-        </div>
+          <Link href="/signup" className={btnPrimarySm}>
+            Get started
+          </Link>
+        </nav>
       </header>
 
-      <div className="mx-auto max-w-3xl px-4 py-10">
-        <h1 className="text-2xl font-semibold text-ink">UK Visa Sponsor Licence Checker</h1>
-        <p className="mt-1 text-sm text-ink-soft">
+      <div className="mx-auto w-full max-w-3xl px-5 pb-20 pt-8 sm:pt-14">
+        <Eyebrow>Free tool · no account</Eyebrow>
+        <h1 className="display mt-4 text-[36px] text-ink sm:text-[52px]">
+          UK Visa Sponsor Licence Checker
+        </h1>
+        <p className="mt-5 max-w-xl text-[15.5px] leading-[1.6] text-ink-body">
           Instantly check any employer against the Home Office register of licensed sponsors. Free, no
           account needed.
         </p>
 
-        <form method="GET" className="mt-6 flex gap-2">
+        <form
+          method="GET"
+          className="mt-8 flex items-center gap-2 rounded-[20px] bg-card p-2 pl-4 transition-shadow focus-within:ring-2 focus-within:ring-lime/50 sm:gap-3"
+        >
+          <Magnifier />
+          <label htmlFor="q" className="sr-only">
+            Employer name
+          </label>
           <input
+            id="q"
             name="q"
             defaultValue={queryRaw}
             placeholder="Employer name — e.g. Figma, Monzo, Deloitte"
-            className={`${inputCls} max-w-md`}
+            className="min-w-0 flex-1 bg-transparent text-[15px] text-ink placeholder:text-ink-faint focus:outline-none"
             maxLength={80}
             required
           />
-          <button
-            type="submit"
-            className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-accent/90"
-          >
+          <button type="submit" className={`${btnPrimary} shrink-0`}>
             Check
           </button>
         </form>
 
         {rateLimited && (
-          <div className={`${cardCls} mt-6 p-5`}>
-            <p className="text-sm text-ink">
+          <div className={`${cardCls} mt-8 p-6 sm:p-7`}>
+            <Eyebrow>rate limited</Eyebrow>
+            <p className="mt-2 text-[15px] leading-[1.6] text-ink-body">
               Too many checks from this connection in a short time — try again in a minute.
             </p>
           </div>
         )}
 
         {!rateLimited && key && exact.length > 0 && (
-          <div className={`${cardCls} mt-6 border-accent/40 p-5`}>
-            <p className="font-mono text-xs uppercase tracking-wide text-accent">✓ licence found</p>
-            <h2 className="mt-1 text-lg font-semibold text-ink">
-              {orgNames[0]}
-              {orgNames.length > 1 ? ` (+${orgNames.length - 1} related entries)` : ""}
+          <section className={`${cardCls} mt-8 p-6 sm:p-8`}>
+            <Tick className="h-9 w-9" />
+            <Eyebrow className="mt-5">Home Office sponsor register</Eyebrow>
+            <h2 className="display mt-2 text-[26px] text-ink sm:text-[32px]">
+              {orgNames[0]} holds a licence
             </h2>
-            <p className="mt-2 text-sm text-ink">
-              Holds a Home Office sponsor licence
-              {ratings.length ? ` — ${ratings.join(", ")}` : ""}
-              {routes.length ? (
-                <>
-                  {" "}
-                  for: <span className="font-medium">{routes.join(" · ")}</span>
-                </>
-              ) : null}
-              .
-            </p>
-            <p className="mt-2 text-xs text-ink-soft">
-              Register of licensed sponsors as of {exact[0]?.register_date} (
-              <a href={REGISTER_URL} target="_blank" rel="noreferrer" className="underline">
-                gov.uk source
-              </a>
-              ). A licence means this employer can sponsor for the route(s) shown above — it does not
-              guarantee they will sponsor a specific role.
-              {!skilledWorker &&
-                " Note: this licence does not include the Skilled Worker route, which is the main work-visa route for most jobs — a licence for other routes (e.g. Temporary Worker categories like Charity, Religious, or Creative Worker) cannot be used to sponsor standard skilled work."}{" "}
-              Always confirm directly with the employer.
-            </p>
+            {subline.length > 0 && (
+              <p className="mt-2.5 font-mono text-[12.5px] leading-[1.5] text-ink-soft">
+                {subline.join(" · ")}
+              </p>
+            )}
 
-            <div className="mt-4 border-t border-line pt-4">
-              {liveJobs > 0 ? (
-                <p className="text-sm text-ink">
-                  <span className="font-mono font-semibold text-accent">{liveJobs}</span> live job
-                  {liveJobs === 1 ? "" : "s"} from this employer in Apply4You right now.{" "}
-                  <Link href="/signup" className="font-medium text-accent underline">
-                    Sign up free
-                  </Link>{" "}
-                  and our AI applies to the ones you approve — you review every application before it
-                  goes anywhere.
-                </p>
-              ) : (
-                <p className="text-sm text-ink-soft">
-                  No live openings from this employer in our index right now.{" "}
-                  <Link href="/signup" className="font-medium text-accent underline">
-                    Sign up free
-                  </Link>{" "}
-                  to get matched with jobs at licensed sponsors — applications filled by AI, approved
-                  by you.
-                </p>
-              )}
+            <div className="mt-6 border-t border-line-soft pt-6">
+              <dl className="flex flex-wrap gap-x-10 gap-y-5">
+                {routes.length > 0 && <Fact label="Route">{routes.join(" · ")}</Fact>}
+                {ratings.length > 0 && <Fact label="Rating">{ratings.join(" · ")}</Fact>}
+                {registerDate && <Fact label="Register checked">{registerDate}</Fact>}
+                <Fact label="Open roles on file">
+                  <span className="tabular-nums">{liveJobs}</span>
+                </Fact>
+              </dl>
             </div>
-          </div>
+
+            {/*
+              The load-bearing element of this page. A licence is permission to
+              sponsor, never a promise about a specific role, and the register
+              edition it was read from is always stated. Wording unchanged.
+            */}
+            <div className="mt-7 rounded-xl bg-attention-soft px-5 py-4">
+              <p className="label-mono text-attention">A licence is not a promise</p>
+              <p className="mt-2 text-[13.5px] leading-[1.65] text-ink-body">
+                Register of licensed sponsors as of {registerDate} (
+                <a
+                  href={REGISTER_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline underline-offset-2"
+                >
+                  gov.uk source
+                </a>
+                ). A licence means this employer can sponsor for the route(s) shown above — it does
+                not guarantee they will sponsor a specific role.
+                {!skilledWorker &&
+                  " Note: this licence does not include the Skilled Worker route, which is the main work-visa route for most jobs — a licence for other routes (e.g. Temporary Worker categories like Charity, Religious, or Creative Worker) cannot be used to sponsor standard skilled work."}{" "}
+                Always confirm directly with the employer.
+              </p>
+            </div>
+
+            <div className="mt-7 border-t border-line-soft pt-6">
+              <p className="text-[14.5px] leading-[1.6] text-ink-body">
+                {liveJobs > 0 ? (
+                  <>
+                    Those roles are live in the Apply4You index right now. Sign up free and our AI
+                    applies to the ones you approve — you review every application before it goes
+                    anywhere.
+                  </>
+                ) : (
+                  <>
+                    No live openings from this employer in our index right now. Sign up free to get
+                    matched with jobs at licensed sponsors — applications filled by AI, approved by
+                    you.
+                  </>
+                )}
+              </p>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Link href="/signup" className={btnPrimary}>
+                  Sign up free
+                </Link>
+                <a href={REGISTER_URL} target="_blank" rel="noreferrer" className={btnSecondary}>
+                  Open the gov.uk register
+                </a>
+              </div>
+            </div>
+          </section>
         )}
 
+        {/*
+          Not a failure state, and deliberately not styled as one: absence from
+          the register is a statement about our lookup, not about the employer.
+        */}
         {!rateLimited && key && exact.length === 0 && (
-          <div className={`${cardCls} mt-6 p-5`}>
-            <p className="font-mono text-xs uppercase tracking-wide text-ink-soft">no exact match</p>
-            <p className="mt-2 text-sm text-ink">
+          <section className={`${cardCls} mt-8 p-6 sm:p-8`}>
+            <Hollow className="h-8 w-8" />
+            <Eyebrow className="mt-5">no exact match</Eyebrow>
+            <p className="mt-2.5 text-[15px] leading-[1.6] text-ink-body">
               &ldquo;{queryRaw}&rdquo; didn&apos;t match a register entry. Companies often register
               under a different legal name — try the suggestions below, or search the{" "}
-              <a href={REGISTER_URL} target="_blank" rel="noreferrer" className="underline">
+              <a
+                href={REGISTER_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="underline underline-offset-2"
+              >
                 official register
               </a>
               .
             </p>
             {near.length > 0 && (
-              <ul className="mt-3 flex flex-col gap-1">
-                {near.map((n) => (
-                  <li key={n.org_name}>
-                    <Link
-                      href={`/check?q=${encodeURIComponent(n.org_name)}`}
-                      className="text-sm text-accent underline"
-                    >
-                      {n.org_name}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+              <div className="mt-6 border-t border-line-soft pt-6">
+                <Eyebrow>Similar names on the register</Eyebrow>
+                <ul className="mt-3 flex flex-wrap gap-2">
+                  {near.map((n) => (
+                    <li key={n.org_name} className="max-w-full">
+                      <Link
+                        href={`/check?q=${encodeURIComponent(n.org_name)}`}
+                        className={`${btnSecondarySm} max-w-full`}
+                      >
+                        <span className="min-w-0 truncate">{n.org_name}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
-          </div>
+          </section>
         )}
 
-        <p className="mt-10 text-xs text-ink-soft/70">
+        <p className="mt-12 max-w-2xl text-[12.5px] leading-[1.6] text-ink-faint">
           Data: UK Home Office &ldquo;Worker and Temporary Worker&rdquo; register of licensed
           sponsors{latestRegisterDate ? `, ${latestRegisterDate} edition` : ""}. We sync a new edition
           when the Home Office publishes one (typically weekly). This checker is informational and not

@@ -2,14 +2,19 @@
 
 import { useState, useTransition } from "react";
 import { queueApplication } from "@/app/(app)/actions";
-import { Spinner, btnSecondary } from "@/components/ui";
+import { Spinner, btnSecondarySm } from "@/components/ui";
 
+/**
+ * The row-level action: an outlined pill, because queuing is reversible — the
+ * application is drafted and then waits for you. Nothing here sends anything,
+ * which is why it is never the lime button.
+ */
 export function QueueButton({ jobId }: { jobId: string }) {
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<"queued" | string | null>(null);
 
   if (result === "queued") {
-    return <span className="font-mono text-xs font-medium text-accent">queued ✓</span>;
+    return <span className="shrink-0 font-mono text-[12px] font-medium text-accent">queued ✓</span>;
   }
 
   return (
@@ -23,12 +28,14 @@ export function QueueButton({ jobId }: { jobId: string }) {
             setResult(res.error ?? "queued");
           })
         }
-        className={btnSecondary}
+        className={btnSecondarySm}
       >
         {pending && <Spinner />}
-        {pending ? "Queuing…" : "Queue"}
+        {pending ? "Queuing…" : "Fill it"}
       </button>
-      {result && result !== "queued" && <span className="max-w-40 text-right text-xs text-danger">{result}</span>}
+      {result && result !== "queued" && (
+        <span className="max-w-40 text-right text-[12px] leading-snug text-danger">{result}</span>
+      )}
     </div>
   );
 }

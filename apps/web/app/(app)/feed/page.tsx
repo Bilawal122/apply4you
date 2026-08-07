@@ -8,10 +8,10 @@ import { QueueButton } from "@/components/queue-button";
 import { AutoApplyButton } from "@/components/auto-apply-button";
 import { FeedFilters } from "@/components/feed-filters";
 import { AutoRefresh } from "@/components/auto-refresh";
-import { ScoreBadge, SponsorBadge, cardCls } from "@/components/ui";
+import { Chip, ScoreBadge, SponsorBadge, cardCls } from "@/components/ui";
 import type { SponsorVerdict } from "@/lib/sponsors";
 
-/** Cards are large, so the feed shows a page of them rather than 50 rows. */
+/** The feed is a register, not an inbox — it shows a page of rows, not all 200. */
 const CARDS_SHOWN = 24;
 
 interface MatchRow {
@@ -55,21 +55,13 @@ function postedLabel(postedAt: string | null): string | null {
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
-function Tag({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded-[2px] border border-line bg-paper px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft">
-      {children}
-    </span>
-  );
-}
-
 export default async function FeedPage({ searchParams }: { searchParams: Promise<FeedParams> }) {
   const { q, ats, minScore, remote, sponsored } = await searchParams;
   const supabase = await createClient();
 
   // Descriptions average ~8KB (Greenhouse stores full HTML), so they are NOT
   // selected here — pulling them for all 200 candidate matches would move
-  // ~1.6MB per feed render. They are fetched below for the cards actually shown.
+  // ~1.6MB per feed render. They are fetched below for the rows actually shown.
   let query = supabase
     .from("job_matches")
     .select(
@@ -114,7 +106,7 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
   const available = (matchRows ?? []).filter((m) => m.jobs && !applied.has(m.jobs.id));
   const matches = available.slice(0, CARDS_SHOWN);
 
-  // Second query, scoped to the visible cards only — see the note above.
+  // Second query, scoped to the visible rows only — see the note above.
   const descriptions = new Map<string, string>();
   if (matches.length > 0) {
     const { data: descRows } = await supabase
@@ -134,6 +126,14 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
   const filtered = Boolean(q || ats || minScore || remote || sponsored);
   const noResume = !profileRow?.resume_storage_path;
 
+  // The masthead states a number this page can actually stand behind: matched,
+  // still open, not already queued — i.e. exactly the rows below it, narrowed by
+  // whatever filters are lit. Never a catalogue size, never a refresh cadence.
+  // ("matched roles to fill" rather than "matched your profile" because the ones
+  // you've already queued are matches too — they're just no longer on this list.)
+  const n = available.length;
+  const headline = matchingPending ? "Job feed" : `${n} matched ${n === 1 ? "role" : "roles"} to fill`;
+
   let planRemaining = 0;
   let planResets: string | null = null;
   if (sub) {
@@ -149,10 +149,10 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="display text-2xl text-ink">Job feed</h1>
-          <p className="mt-1.5 text-sm text-ink-soft">
+      <div className="mb-6 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between sm:gap-8">
+        <div className="min-w-0">
+          <h1 className="display text-[28px] text-ink sm:text-[34px]">{headline}</h1>
+          <p className="mt-2 text-[15.5px] text-ink-soft">
             Ranked by fit with your profile. Nothing is submitted until you approve it.
           </p>
         </div>
@@ -167,11 +167,11 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
       </div>
 
       {noResume && (
-        <div className="mb-4 rounded-[3px] border border-attention/30 bg-attention-soft px-4 py-3 text-sm">
-          <span className="font-medium text-attention">No resume on file.</span>{" "}
-          <span className="text-ink-soft">
+        <div className="mb-4 rounded-2xl bg-attention-soft px-5 py-4 text-[14.5px] leading-[1.6]">
+          <span className="font-semibold text-attention">No resume on file.</span>{" "}
+          <span className="text-ink-body">
             Applications can&apos;t be submitted without one —{" "}
-            <Link href="/onboarding" className="font-medium text-ink underline decoration-line underline-offset-2">
+            <Link href="/onboarding" className="font-semibold text-ink underline underline-offset-2">
               upload your resume
             </Link>{" "}
             to unlock submissions.
@@ -182,26 +182,26 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
       {!matchingPending && <FeedFilters />}
 
       {matchingPending ? (
-        <div className={`${cardCls} p-10 text-center`}>
+        <div className={`${cardCls} px-6 py-14 text-center`}>
           <AutoRefresh />
           <p className="label-mono text-accent">matching in progress…</p>
-          <p className="mx-auto mt-3 max-w-md text-sm text-ink-soft">
+          <p className="mx-auto mt-3 max-w-md text-[14.5px] leading-[1.6] text-ink-body">
             We&apos;re reading your profile against every open job. This takes about a minute after you
-            save your <Link href="/profile" className="underline decoration-line underline-offset-2">profile</Link> and{" "}
-            <Link href="/preferences" className="underline decoration-line underline-offset-2">preferences</Link> — this page refreshes
+            save your <Link href="/profile" className="underline underline-offset-2">profile</Link> and{" "}
+            <Link href="/preferences" className="underline underline-offset-2">preferences</Link> — this page refreshes
             itself.
           </p>
-          <p className="mx-auto mt-2 max-w-md text-xs text-ink-faint">
+          <p className="mx-auto mt-2.5 max-w-md text-[13px] leading-[1.55] text-ink-faint">
             Still here after a few minutes? Your criteria may be too narrow — try widening your{" "}
-            <Link href="/preferences" className="underline decoration-line underline-offset-2">preferences</Link>.
+            <Link href="/preferences" className="underline underline-offset-2">preferences</Link>.
           </p>
         </div>
       ) : matches.length === 0 ? (
-        <div className={`${cardCls} p-10 text-center`}>
-          <p className="text-sm font-medium text-ink">
+        <div className={`${cardCls} px-6 py-14 text-center`}>
+          <p className="text-[19px] font-bold tracking-[-0.02em] text-ink">
             {filtered ? "No matches for these filters" : "No unqueued matches right now"}
           </p>
-          <p className="mx-auto mt-2 max-w-md text-sm text-ink-soft">
+          <p className="mx-auto mt-2.5 max-w-md text-[14.5px] leading-[1.6] text-ink-body">
             {filtered
               ? "Try widening your search or clearing filters."
               : "You've queued everything that fits, or matching hasn't run since your last profile change. New jobs appear as company boards are re-polled."}
@@ -209,75 +209,58 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
         </div>
       ) : (
         <>
-          <div className="mb-3 flex items-baseline justify-between gap-3">
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <p className="label-mono">
               showing {matches.length} of {available.length}
             </p>
+            <p className="label-mono">sorted by fit</p>
           </div>
 
-          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {/* One register: every row lives in the same sheet of paper, separated
+              by a hairline rather than by whitespace between cards. */}
+          <ul className={`${cardCls} px-5 py-1 sm:px-7`}>
             {matches.map((m) => {
               const posted = postedLabel(m.jobs.posted_at);
-              const isRemote = /remote/i.test(m.jobs.location ?? "");
-              const excerpt = descriptions.get(m.jobs.id);
+              const salary = formatSalary(m.jobs);
+              // Our own rationale outranks the employer's boilerplate; the
+              // excerpt only takes the line when there is no reason to show.
+              const excerpt = m.reason ? null : descriptions.get(m.jobs.id);
               return (
                 <li
                   key={m.jobs.id}
-                  className={`${cardCls} flex flex-col p-4 transition-colors hover:border-ink-soft/40`}
+                  className="grid grid-cols-[2.75rem_minmax(0,1fr)] items-start gap-x-4 gap-y-3 border-b border-line-soft py-4 last:border-b-0 md:grid-cols-[2.75rem_minmax(0,1fr)_auto] md:items-center md:gap-x-5"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
-                      {posted ?? m.jobs.ats_type}
-                    </span>
-                    <ScoreBadge score={m.score} />
-                  </div>
+                  <ScoreBadge score={m.score} />
 
-                  <p className="mt-2 text-sm text-ink-soft">{m.jobs.company}</p>
-                  <Link
-                    href={`/jobs/${m.jobs.id}`}
-                    className="mt-0.5 text-[15px] font-semibold leading-snug text-ink transition-colors hover:text-accent"
-                  >
-                    {m.jobs.title}
-                  </Link>
-
-                  <div className="mt-2.5 flex flex-wrap gap-1.5">
-                    {isRemote && <Tag>remote</Tag>}
-                    <Tag>{m.jobs.ats_type}</Tag>
-                    {m.jobs.requires_login && <Tag>account needed</Tag>}
-                    {m.jobs.sponsor_verdict?.licensed && <SponsorBadge verdict={m.jobs.sponsor_verdict} />}
-                  </div>
-
-                  {m.reason && (
-                    <p className="mt-2.5 text-[13px] leading-snug text-ink">
-                      <span className="label-mono">Why</span> {m.reason}
-                    </p>
-                  )}
-
-                  {excerpt && (
-                    <p className="mt-2 line-clamp-4 text-[13px] leading-snug text-ink-soft">{excerpt}</p>
-                  )}
-
-                  <div className="mt-auto flex items-end justify-between gap-3 pt-3">
-                    <span className="flex min-w-0 flex-col gap-0.5">
+                  <div className="min-w-0">
+                    <Link
+                      href={`/jobs/${m.jobs.id}`}
+                      className="block truncate text-[16px] font-semibold tracking-[-0.015em] text-ink transition-colors hover:text-accent"
+                    >
+                      {m.jobs.title}
+                    </Link>
+                    <p className="mt-0.5 truncate text-[13.5px] text-ink-soft">
+                      {m.jobs.company} · {m.jobs.location ?? "—"} ·{" "}
                       {/* Employer-published only. Never estimated — see lib/salary.ts. */}
-                      {formatSalary(m.jobs) ? (
-                        <span className="truncate font-mono text-xs font-medium text-ink">{formatSalary(m.jobs)}</span>
+                      {salary ? (
+                        <span className="font-mono text-[12.5px] text-ink-body">{salary}</span>
                       ) : (
-                        <span className="truncate font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
-                          salary not stated
-                        </span>
+                        <span className="font-mono text-[12.5px] text-ink-faint">salary not stated</span>
                       )}
-                      <span className="min-w-0 truncate text-xs text-ink-faint">{m.jobs.location ?? "—"}</span>
-                    </span>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <Link
-                        href={`/jobs/${m.jobs.id}`}
-                        className="rounded-[3px] border border-line bg-card px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-ink-soft hover:bg-paper"
-                      >
-                        Details
-                      </Link>
-                      <QueueButton jobId={m.jobs.id} />
-                    </div>
+                    </p>
+                    {m.reason && (
+                      <p className="mt-1 truncate text-[13px] text-ink-soft" title={m.reason}>
+                        <span className="label-mono">why</span> {m.reason}
+                      </p>
+                    )}
+                    {excerpt && <p className="mt-1 truncate text-[13px] text-ink-faint">{excerpt}</p>}
+                  </div>
+
+                  <div className="col-span-2 flex flex-wrap items-center gap-x-3 gap-y-2 md:col-span-1 md:flex-nowrap md:justify-end">
+                    <SponsorBadge verdict={m.jobs.sponsor_verdict} />
+                    {m.jobs.requires_login && <Chip>account needed</Chip>}
+                    <span className="font-mono text-[12px] text-ink-soft">{posted ?? m.jobs.ats_type}</span>
+                    <QueueButton jobId={m.jobs.id} />
                   </div>
                 </li>
               );

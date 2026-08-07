@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { queueTopMatches } from "@/app/(app)/actions";
-import { Spinner, btnPrimary } from "@/components/ui";
+import { Spinner, btnPrimarySm } from "@/components/ui";
 
 /**
  * Auto Apply — one click and the AI does the whole application for every job it
@@ -39,7 +39,7 @@ export function AutoApplyButton({
 
   if (planRemaining <= 0) {
     return (
-      <p className="max-w-xs text-[11px] leading-snug text-ink-soft sm:text-right">
+      <p className="max-w-xs text-[11.5px] leading-[1.5] text-ink-soft sm:text-right">
         Plan limit reached{planResets ? ` — resets ${planResets}` : ""}. Existing drafts are still
         yours to review.
       </p>
@@ -50,7 +50,7 @@ export function AutoApplyButton({
   const cappedByPlan = planRemaining < Math.min(available, dailyCap, 25);
 
   return (
-    <div className="flex flex-col items-start gap-1.5 sm:items-end">
+    <div className="flex flex-col items-start gap-2 sm:items-end">
       <button
         type="button"
         disabled={pending}
@@ -66,13 +66,19 @@ export function AutoApplyButton({
             router.refresh();
           })
         }
-        className={`${btnPrimary} px-5 py-2.5`}
+        className={btnPrimarySm}
       >
         {pending && <Spinner />}
         {pending ? `Starting ${n}…` : `Auto-apply to top ${n}`}
       </button>
 
-      <p className="max-w-xs text-[11px] leading-snug text-ink-soft sm:text-right">
+      {/* The machine's own report of what it did is mono; the standing
+          explanation underneath is ordinary prose, so it is not. */}
+      <p
+        className={`max-w-xs leading-[1.5] sm:text-right ${
+          message ? "font-mono text-[11px] text-ink-body" : "text-[11.5px] text-ink-soft"
+        }`}
+      >
         {message ?? (
           <>
             AI fills every form, tailors your CV and writes each cover letter — then stops so you can

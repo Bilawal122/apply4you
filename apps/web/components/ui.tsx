@@ -1,19 +1,88 @@
 /*
-  Shared UI atoms — "official register" system (see globals.css).
+  Shared UI atoms — "soft register" system (see globals.css).
 
   Voice: machine output (scores, statuses, values, verdicts) is mono; human
   text is sans. Provenance: anything shown to the user can declare where it
   came from, and a refusal to guess is displayed as proudly as an answer.
+
+  Shape: everything that can be pressed is a full pill; everything that holds
+  content is a 22px white card sitting on warm paper, with no border — the
+  paper/card contrast does the work a hairline used to. Rules survive only
+  *inside* a card, separating rows.
 */
 
-export const btnPrimary =
-  "inline-flex items-center justify-center gap-2 rounded-[3px] bg-accent px-4 py-2 text-sm font-medium text-white transition-colors duration-100 hover:bg-accent-deep active:bg-accent-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-40 disabled:pointer-events-none";
+import Link from "next/link";
 
-export const btnSecondary =
-  "inline-flex items-center justify-center gap-2 rounded-[3px] border border-line bg-card px-4 py-2 text-sm font-medium text-ink transition-colors duration-100 hover:border-ink-soft hover:bg-paper focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-40 disabled:pointer-events-none";
+/* ── Identity ─────────────────────────────────────────────────────────────
+   Three circles: two ink, one lime. It lives here rather than in each page
+   because it was independently re-typed in seven files during the redesign
+   and /check was quietly left on the old mark — exactly the divergence a
+   shared atom prevents.                                                    */
 
-export const btnGhost =
-  "inline-flex items-center justify-center gap-2 rounded-[3px] px-3 py-2 text-sm font-medium text-ink-soft transition-colors duration-100 hover:bg-paper hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-40 disabled:pointer-events-none";
+export function Logo({ tone = "ink" }: { tone?: "ink" | "paper" }) {
+  const solid = tone === "ink" ? "var(--color-ink)" : "var(--color-paper)";
+  return (
+    <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" className="shrink-0">
+      <circle cx="4" cy="9" r="3.4" fill={solid} />
+      <circle cx="13" cy="5" r="2.2" fill="var(--color-lime)" />
+      <circle cx="13.5" cy="13" r="2.2" fill={solid} />
+    </svg>
+  );
+}
+
+/** The mark plus the wordmark, as a link. `href` varies: "/" out here, "/feed" inside. */
+export function Wordmark({
+  href = "/",
+  tone = "ink",
+  className = "",
+}: {
+  href?: string;
+  tone?: "ink" | "paper";
+  className?: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`inline-flex shrink-0 items-center gap-2.5 text-[18px] font-extrabold tracking-[-0.03em] ${
+        tone === "ink" ? "text-ink" : "text-on-slate"
+      } ${className}`}
+    >
+      <Logo tone={tone} />
+      apply4you
+    </Link>
+  );
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────────
+   Three weights, and the choice between them is semantic:
+     primary  — the dark pill. Navigation and commitment ("Fill this one").
+     lime     — the affirmative. Reserved for approving/sending, so that the
+                one irreversible action in the product is the one colour the
+                eye lands on first. Do not use it for "next".
+     secondary— outlined. Everything reversible.
+   `*Sm` variants are for row-level actions inside a table or card.        */
+
+const btnBase =
+  "inline-flex items-center justify-center gap-2 rounded-full font-semibold transition-colors duration-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:opacity-40 disabled:pointer-events-none";
+
+export const btnPrimary = `${btnBase} bg-ink px-6 py-3.5 text-[15px] text-white hover:bg-slate-raised active:bg-slate-raised`;
+
+export const btnPrimarySm = `${btnBase} bg-ink px-[18px] py-2.5 text-[13.5px] text-white hover:bg-slate-raised active:bg-slate-raised`;
+
+/** The affirmative. Approve, submit, send — nothing else. */
+export const btnLime = `${btnBase} bg-lime px-7 py-3.5 text-[15px] font-bold text-ink hover:brightness-[0.96] active:brightness-[0.93]`;
+
+export const btnLimeSm = `${btnBase} bg-lime px-[18px] py-2.5 text-[13.5px] font-bold text-ink hover:brightness-[0.96] active:brightness-[0.93]`;
+
+export const btnSecondary = `${btnBase} border border-line bg-card px-5 py-3.5 text-[15px] text-ink hover:border-ink-faint hover:bg-paper-tint`;
+
+export const btnSecondarySm = `${btnBase} border border-line bg-card px-[18px] py-2.5 text-[13.5px] text-ink hover:border-ink-faint hover:bg-paper-tint`;
+
+export const btnGhost = `${btnBase} px-4 py-2.5 text-[14px] text-ink-soft hover:bg-paper-tint hover:text-ink`;
+
+/** An underlined text action — the design's "Edit" / "Receipt" / "Review all". */
+export const btnLink =
+  "text-[13.5px] font-semibold text-ink underline underline-offset-2 transition-colors hover:text-ink-soft focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink disabled:opacity-40 disabled:pointer-events-none";
 
 /** Inline pending indicator for buttons — sized to the text line. */
 export function Spinner({ className = "" }: { className?: string }) {
@@ -30,28 +99,74 @@ export function Spinner({ className = "" }: { className?: string }) {
   );
 }
 
+/* ── Surfaces ─────────────────────────────────────────────────────────── */
+
 export const inputCls =
-  "w-full rounded-[3px] border border-line bg-card px-3 py-2 text-sm text-ink transition-colors placeholder:text-ink-faint focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/15";
+  "w-full rounded-2xl border border-line bg-card px-4 py-3 text-[15px] text-ink transition-colors placeholder:text-ink-faint focus:border-ink-faint focus:outline-none focus:ring-2 focus:ring-lime/50";
 
 /** Form-field label — mono, tracked, uppercase. The system's connective tissue. */
-export const labelCls = "label-mono mb-1.5 block";
+export const labelCls = "label-mono mb-2 block";
 
-export const cardCls = "rounded-[3px] border border-line bg-card";
+/** The default container: white, soft, borderless, floating on paper. */
+export const cardCls = "rounded-[22px] bg-card";
+
+/** The inverted container. Used for anything live, and for the guardrails. */
+export const cardDarkCls = "rounded-[22px] bg-slate text-on-slate";
+
+/** A recessed inset *inside* a card — quotes, drafts, secondary blocks. */
+export const insetCls = "rounded-xl bg-paper-tint";
 
 /** Section eyebrow: the same label texture, used above a block of content. */
 export function Eyebrow({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <p className={`label-mono ${className}`}>{children}</p>;
 }
 
+/** Filter / segmented control pill, as on the feed and applications screens. */
+export function filterPill(active: boolean) {
+  return `inline-flex shrink-0 items-center gap-1.5 rounded-full px-[18px] py-2.5 text-[13.5px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink ${
+    active ? "bg-ink text-white" : "bg-card text-ink hover:bg-paper-tint"
+  }`;
+}
+
+/* ── Machine marks ────────────────────────────────────────────────────── */
+
+/** The lime tick. The single affirmative glyph in the system. */
+export function Tick({ className = "h-3 w-3" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 12 12" className={`shrink-0 ${className}`} aria-hidden="true">
+      <circle cx="6" cy="6" r="6" fill="var(--color-lime)" />
+      <path
+        d="M3.2 6.1l2 2 3.6-3.9"
+        fill="none"
+        stroke="var(--color-ink)"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/** The hollow counterpart: a thing that is simply absent, not a failure. */
+export function Hollow({ className = "h-3 w-3" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 12 12" className={`shrink-0 ${className}`} aria-hidden="true">
+      <circle cx="6" cy="6" r="5.2" fill="none" stroke="var(--color-ink-faint)" strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+const chipBase =
+  "inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 font-mono text-[11.5px] leading-none";
+
 const STATUS_STYLES: Record<string, string> = {
-  draft: "border-accent/25 bg-accent-soft text-accent",
-  needs_review: "border-attention/30 bg-attention-soft text-attention",
-  approved: "border-accent/25 bg-accent-soft text-accent",
-  submitting: "border-accent/25 bg-accent-soft text-accent",
-  submitted: "border-accent bg-accent text-white",
-  failed: "border-danger/30 bg-danger-soft text-danger",
-  skipped: "border-line bg-paper text-ink-soft",
-  needs_manual_verification: "border-danger/30 bg-danger-soft text-danger",
+  draft: "bg-paper-tint text-ink-body",
+  needs_review: "bg-attention-mid text-attention",
+  approved: "bg-accent-soft text-accent",
+  submitting: "bg-accent-soft text-accent",
+  submitted: "bg-accent-soft text-accent",
+  failed: "bg-danger-soft text-danger",
+  skipped: "bg-paper-tint text-ink-soft",
+  needs_manual_verification: "bg-danger-soft text-danger",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -59,7 +174,7 @@ const STATUS_LABELS: Record<string, string> = {
   needs_review: "needs you",
   approved: "approved",
   submitting: "submitting",
-  submitted: "submitted",
+  submitted: "sent",
   failed: "failed",
   skipped: "skipped",
   needs_manual_verification: "verify manually",
@@ -67,14 +182,15 @@ const STATUS_LABELS: Record<string, string> = {
 
 export function StatusBadge({ status }: { status: string }) {
   return (
-    <span
-      className={`inline-flex shrink-0 items-center rounded-[2px] border px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.1em] ${
-        STATUS_STYLES[status] ?? "border-line bg-paper text-ink-soft"
-      }`}
-    >
+    <span className={`${chipBase} ${STATUS_STYLES[status] ?? "bg-paper-tint text-ink-soft"}`}>
       {STATUS_LABELS[status] ?? status}
     </span>
   );
+}
+
+/** A neutral fact chip — ATS name, question count, anything unweighted. */
+export function Chip({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <span className={`${chipBase} bg-paper-tint text-ink-body ${className}`}>{children}</span>;
 }
 
 /**
@@ -91,15 +207,12 @@ export function SponsorBadge({
   const skilledWorker = verdict.routes?.includes("Skilled Worker");
   return (
     <span
-      className="inline-flex shrink-0 items-center gap-1 rounded-[2px] border border-accent/25 bg-accent-soft px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-accent"
+      className={`${chipBase} bg-accent-soft text-accent`}
       title={`${verdict.org_name ?? "This employer"} holds a Home Office sponsor licence${
         skilledWorker ? " (Skilled Worker route)" : ""
       } — register as of ${verdict.register_date ?? "latest refresh"}. A licence does not guarantee sponsorship for this specific role.`}
     >
-      <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" fill="none" aria-hidden="true">
-        <path d="M2.5 6.2l2.2 2.2 4.8-4.8" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />
-      </svg>
-      {skilledWorker ? "sponsor licence · skilled worker" : "sponsor licence"}
+      {skilledWorker ? "licence held · skilled worker" : "licence held"}
     </span>
   );
 }
@@ -113,11 +226,42 @@ export function SponsorBadge({
 export function ScoreBadge({ score }: { score: number }) {
   return (
     <span
-      className="w-9 shrink-0 pt-px text-right font-mono text-[17px] font-semibold leading-none tabular-nums text-ink"
+      className="w-11 shrink-0 text-right font-mono text-[19px] leading-none tabular-nums text-ink"
       title={`Fit score ${score} out of 100`}
     >
       {score}
     </span>
+  );
+}
+
+/**
+ * The same score as a dial, for the one place there's room for it: a job's own
+ * page, where the number is the headline rather than a sortable column.
+ */
+export function ScoreDial({ score, size = 64 }: { score: number; size?: number }) {
+  const circumference = 2 * Math.PI * 27; // r=27 in the 66-unit viewBox
+  const filled = Math.max(0, Math.min(100, score)) / 100;
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox="0 0 66 66" aria-hidden="true">
+        <circle cx="33" cy="33" r="27" fill="none" stroke="var(--color-line-soft)" strokeWidth="7" />
+        <circle
+          cx="33"
+          cy="33"
+          r="27"
+          fill="none"
+          stroke="var(--color-lime)"
+          strokeWidth="7"
+          strokeLinecap="round"
+          strokeDasharray={`${circumference * filled} ${circumference}`}
+          transform="rotate(-90 33 33)"
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="font-mono text-[17px] tabular-nums text-ink">{score}</span>
+      </div>
+      <span className="sr-only">Fit score {score} out of 100</span>
+    </div>
   );
 }
 
@@ -139,53 +283,66 @@ export function ScoreBadge({ score }: { score: number }) {
 export type Source = "profile" | "library" | "ai" | "you" | "unknown";
 
 const SOURCE_COPY: Record<Source, { label: string; cls: string }> = {
-  profile: { label: "from your profile", cls: "text-ink-faint" },
+  profile: { label: "from your profile", cls: "text-ink-soft" },
   // The Answer Library holds answers this user wrote themselves on an earlier
   // application. Calling that "from your profile" would misattribute their own
   // words, and calling it "written by AI" would be plainly false.
   library: { label: "your saved answer", cls: "text-ink-soft" },
-  ai: { label: "written by AI", cls: "text-accent" },
+  ai: { label: "drafted by AI · edit freely", cls: "text-accent" },
   you: { label: "you wrote this", cls: "text-ink-soft" },
-  unknown: { label: "needs you", cls: "text-attention" },
+  unknown: { label: "we didn't guess", cls: "text-attention" },
 };
 
 export function Provenance({ source }: { source: Source }) {
   const { label, cls } = SOURCE_COPY[source];
   return (
-    <span className={`font-mono text-[10px] font-medium uppercase tracking-[0.1em] ${cls}`}>{label}</span>
+    <span className={`font-mono text-[10px] font-medium uppercase tracking-[0.06em] ${cls}`}>{label}</span>
   );
 }
 
 /**
  * The honest blank. When the machine had no profile-backed answer it says so
- * here, in the vocabulary of the form it's filling — a stamp. This is the one
- * place the system allows itself a flourish, and the reason it earns it is
- * that admitting the gap *is* the product.
+ * here, in the vocabulary of the form it's filling. This is the one place the
+ * system allows itself a flourish, and the reason it earns it is that
+ * admitting the gap *is* the product.
  */
-export function NeedsYouStamp({ children = "needs your answer" }: { children?: React.ReactNode }) {
+export function NeedsYouStamp({ children = "needs you" }: { children?: React.ReactNode }) {
   return <span className="stamp text-attention">{children}</span>;
 }
 
 /**
- * A single ruled row from a register: mono label on the left, value on the
- * right. The atomic unit of every detail view in the app.
+ * A single ruled row from a register: label on the left, value on the right.
+ * The atomic unit of every detail view in the app.
+ *
+ * `attention` tints the whole row amber — used when the row is a gap the user
+ * has to close, so the thing needing work is visible from across the page.
  */
 export function FieldRow({
   label,
   children,
   source,
+  attention = false,
 }: {
   label: string;
   children: React.ReactNode;
   source?: Source;
+  attention?: boolean;
 }) {
   return (
-    <div className="field-rule grid grid-cols-1 gap-x-6 gap-y-1 py-2.5 sm:grid-cols-[minmax(9rem,14rem)_1fr]">
-      <div className="flex flex-col gap-0.5">
-        <span className="label-mono">{label}</span>
+    <div
+      className={
+        attention
+          ? "mt-2 grid grid-cols-1 gap-x-6 gap-y-1 rounded-xl bg-attention-soft px-3.5 py-3.5 sm:grid-cols-[minmax(9rem,14rem)_1fr]"
+          : "field-rule grid grid-cols-1 gap-x-6 gap-y-1 py-3.5 sm:grid-cols-[minmax(9rem,14rem)_1fr]"
+      }
+    >
+      <div className="flex flex-col gap-1">
+        <span className={attention ? "text-sm font-semibold text-attention" : "text-sm text-ink-soft"}>
+          {label}
+        </span>
         {source && <Provenance source={source} />}
       </div>
-      <div className="min-w-0 text-sm text-ink">{children}</div>
+      <div className={`min-w-0 text-[15px] ${attention ? "text-attention" : "text-ink"}`}>{children}</div>
     </div>
   );
 }

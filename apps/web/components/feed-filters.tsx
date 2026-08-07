@@ -2,10 +2,33 @@
 
 import { useCallback, useEffect, useRef, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Spinner, inputCls } from "@/components/ui";
+import { Spinner, filterPill } from "@/components/ui";
 
 const ATS = ["greenhouse", "lever", "ashby", "workable"];
 const SEARCH_DEBOUNCE_MS = 300;
+
+/*
+  The controls are pills so the row reads as one segmented register header.
+  The native <input>/<select>/<checkbox> underneath are untouched — a select is
+  covered by a transparent, full-size native control and a checkbox is sr-only
+  inside its own <label> — so keyboard, screen readers and the mobile pickers
+  all behave exactly as they did before the restyle.
+*/
+
+/** inputCls at pill radius: same tokens, same focus ring, sized for this row. */
+const searchCls =
+  "w-full rounded-full bg-card px-5 py-2.5 text-[13.5px] font-medium text-ink transition-colors placeholder:text-ink-faint focus:outline-none focus:ring-2 focus:ring-lime/50 sm:w-60";
+
+const pillFocus =
+  "peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ink";
+
+function Chevron() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" className="shrink-0" aria-hidden="true">
+      <path d="M1.5 3.5L5 7l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 /** Server-applied feed filters, driven through the URL so they survive refresh. */
 export function FeedFilters() {
@@ -52,55 +75,85 @@ export function FeedFilters() {
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2">
       <input
-        className={`${inputCls} max-w-56`}
+        className={searchCls}
         placeholder="Search title or company"
         defaultValue={q}
         onChange={(e) => setSearch(e.target.value.trim())}
       />
-      <select className={`${inputCls} max-w-40`} value={ats} onChange={(e) => setParam("ats", e.target.value)}>
-        <option value="">All sources</option>
-        {ATS.map((a) => (
-          <option key={a} value={a}>
-            {a}
-          </option>
-        ))}
-      </select>
-      <select
-        className={`${inputCls} max-w-40`}
-        value={minScore}
-        onChange={(e) => setParam("minScore", e.target.value)}
-      >
-        <option value="">Any fit</option>
-        <option value="80">80+ fit</option>
-        <option value="70">70+ fit</option>
-        <option value="60">60+ fit</option>
-      </select>
-      <label className="flex items-center gap-1.5 text-sm text-ink-soft">
-        <input type="checkbox" checked={remote} onChange={(e) => setParam("remote", e.target.checked ? "1" : "")} />
-        Remote only
+
+      <span className="relative inline-flex">
+        <select
+          className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          aria-label="Filter by job board"
+          value={ats}
+          onChange={(e) => setParam("ats", e.target.value)}
+        >
+          <option value="">All sources</option>
+          {ATS.map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+        </select>
+        <span aria-hidden="true" className={`${filterPill(Boolean(ats))} ${pillFocus} pointer-events-none`}>
+          {ats || "All sources"}
+          <Chevron />
+        </span>
+      </span>
+
+      <span className="relative inline-flex">
+        <select
+          className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          aria-label="Minimum fit score"
+          value={minScore}
+          onChange={(e) => setParam("minScore", e.target.value)}
+        >
+          <option value="">Any fit</option>
+          <option value="80">80+ fit</option>
+          <option value="70">70+ fit</option>
+          <option value="60">60+ fit</option>
+        </select>
+        <span aria-hidden="true" className={`${filterPill(Boolean(minScore))} ${pillFocus} pointer-events-none`}>
+          {minScore ? `${minScore}+ fit` : "Any fit"}
+          <Chevron />
+        </span>
+      </span>
+
+      <label className="relative inline-flex cursor-pointer">
+        <input
+          type="checkbox"
+          className="peer sr-only"
+          checked={remote}
+          onChange={(e) => setParam("remote", e.target.checked ? "1" : "")}
+        />
+        <span className={`${filterPill(remote)} ${pillFocus}`}>Remote only</span>
       </label>
+
       <label
-        className="flex items-center gap-1.5 text-sm text-ink-soft"
+        className="relative inline-flex cursor-pointer"
         title="Employers holding a Home Office sponsor licence (a licence does not guarantee sponsorship for a specific role)"
       >
         <input
           type="checkbox"
+          className="peer sr-only"
           checked={sponsored}
           onChange={(e) => setParam("sponsored", e.target.checked ? "1" : "")}
         />
-        Visa sponsor licence ✓
+        <span className={`${filterPill(sponsored)} ${pillFocus}`}>Visa sponsor licence ✓</span>
       </label>
+
       {hasFilters && (
         <button
           type="button"
           onClick={() => startTransition(() => router.replace(pathname, { scroll: false }))}
-          className="text-sm text-ink-soft underline transition-colors hover:text-ink"
+          className={filterPill(false)}
         >
           Clear
         </button>
       )}
+
       {isPending && (
-        <span className="flex items-center gap-1.5 font-mono text-xs text-ink-soft">
+        <span className="flex items-center gap-1.5 font-mono text-[12px] text-ink-soft">
           <Spinner />
           updating…
         </span>

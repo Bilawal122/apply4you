@@ -9,13 +9,17 @@ import {
   skipApplication,
 } from "@/app/(app)/applications/actions";
 import {
+  Eyebrow,
   NeedsYouStamp,
   Provenance,
   Spinner,
   btnGhost,
-  btnPrimary,
+  btnLime,
   btnSecondary,
+  cardCls,
+  cardDarkCls,
   inputCls,
+  insetCls,
   type Source,
 } from "@/components/ui";
 
@@ -41,6 +45,21 @@ function isCoverLetterField(f: Field): boolean {
   return f.type === "textarea" && /cover.?letter/i.test(`${f.id} ${f.label}`);
 }
 
+/*
+ * The provenance ledger on the dark panel. Every row is a tally of the labels
+ * already shown against the answers themselves — it never introduces a source
+ * the rows don't carry, and "Made up" is a real zero rather than a boast: the
+ * resolver stores null when it can't ground an answer (FR-14/15), so an
+ * unattributed value has nowhere to come from.
+ */
+const PROVENANCE_ROWS: Array<{ key: Source; label: string; tone: string }> = [
+  { key: "profile", label: "From your profile", tone: "text-on-slate" },
+  { key: "library", label: "Your saved answers", tone: "text-on-slate" },
+  { key: "you", label: "You wrote", tone: "text-on-slate" },
+  { key: "ai", label: "Drafted by AI", tone: "text-on-slate" },
+  { key: "unknown", label: "We didn't guess", tone: "text-attention-bright" },
+];
+
 /**
  * The tailored CV, shown as what it actually is: a re-ordering of the user's
  * own experience for this job. Every line here is text they wrote — the model
@@ -53,10 +72,10 @@ function TailoredCvBlock({ cv, applicationId }: { cv: ResolvedCv; applicationId:
   const dropped = cv.omitted.roles + cv.omitted.bullets + cv.omitted.skills;
 
   return (
-    <div className="mb-5 rounded-[3px] border border-line bg-paper p-3">
+    <div className={`${insetCls} mb-5 px-4 py-4`}>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="label-mono">Tailored CV</p>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           {/* The document itself, not a summary of it — same markup the worker
               turns into the PDF, so reviewing this is reviewing the artifact. */}
           <a
@@ -77,24 +96,24 @@ function TailoredCvBlock({ cv, applicationId }: { cv: ResolvedCv; applicationId:
         </div>
       </div>
 
-      {cv.rationale && <p className="mt-1.5 text-[13px] text-ink">{cv.rationale}</p>}
+      {cv.rationale && <p className="mt-2 text-[14px] leading-[1.6] text-ink-body">{cv.rationale}</p>}
 
-      <p className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.1em] text-ink-faint">
+      <p className="mt-2 font-mono text-[10px] uppercase tracking-[0.1em] text-ink-faint">
         your own wording, reordered for this job
         {dropped > 0 ? ` · ${dropped} item${dropped === 1 ? "" : "s"} held back` : ""}
       </p>
 
       {open && (
-        <div className="mt-3 border-t border-line pt-3">
-          {cv.summary && <p className="mb-3 text-[13px] leading-relaxed text-ink">{cv.summary}</p>}
+        <div className="mt-4 border-t border-line-soft pt-4">
+          {cv.summary && <p className="mb-3 text-[14px] leading-[1.6] text-ink-body">{cv.summary}</p>}
           {cv.roles.map((r, i) => (
-            <div key={`${r.company}-${i}`} className="mb-2.5">
-              <p className="text-[13px] font-medium text-ink">
+            <div key={`${r.company}-${i}`} className="mb-3">
+              <p className="text-[14px] font-semibold text-ink">
                 {r.title} — {r.company}
               </p>
-              <ul className="mt-0.5 list-disc pl-4">
+              <ul className="mt-1 list-disc pl-4">
                 {r.bullets.map((b, bi) => (
-                  <li key={bi} className="text-[13px] text-ink-soft">
+                  <li key={bi} className="text-[13.5px] leading-[1.6] text-ink-body">
                     {b}
                   </li>
                 ))}
@@ -102,7 +121,7 @@ function TailoredCvBlock({ cv, applicationId }: { cv: ResolvedCv; applicationId:
             </div>
           ))}
           {cv.skills.length > 0 && (
-            <p className="mt-2 text-[13px] text-ink-soft">
+            <p className="mt-2 text-[13.5px] leading-[1.6] text-ink-body">
               <span className="label-mono">Skills</span> {cv.skills.join(" · ")}
             </p>
           )}
@@ -240,6 +259,24 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
     return "profile";
   };
 
+  /*
+   * The counts behind the dark panel and the "n of m filled" readout. Both are
+   * tallies of what is on screen right now — the same labels the rows carry,
+   * counted, so the panel can never disagree with the list above it.
+   */
+  const hasCoverLetter = Boolean(clField || coverLetter);
+  const questionCount = editableFields.length + (hasCoverLetter ? 1 : 0);
+  const answeredCount =
+    editableFields.filter((f) => String(values[f.id] ?? "").trim()).length +
+    (hasCoverLetter && coverLetter.trim() ? 1 : 0);
+
+  const tally: Record<Source, number> = { profile: 0, library: 0, ai: 0, you: 0, unknown: 0 };
+  for (const field of editableFields) tally[sourceOf(field.id, values[field.id] ?? "")] += 1;
+  if (hasCoverLetter) {
+    // An empty letter is a gap, not an AI draft — count it as one.
+    tally[coverLetter.trim() ? (edited.has("__cl") ? "you" : "ai") : "unknown"] += 1;
+  }
+
   const payload = (): ResolvedValues =>
     clField ? { ...values, [clField.id]: coverLetter || null } : values;
 
@@ -281,204 +318,279 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
   };
 
   return (
-    <div className="rounded-[3px] border border-line bg-card">
-      <button
-        type="button"
-        onClick={() => setExpanded((e) => !e)}
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-paper focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
-      >
-        <div className="min-w-0">
-          <span className="text-[15px] font-semibold text-ink">{app.jobTitle}</span>
-          <span className="ml-2 text-sm text-ink-soft">{app.company}</span>
-        </div>
-        <div className="flex shrink-0 items-center gap-3">
-          {app.jobClosed ? (
-            <span className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-danger">
-              posting closed
+    <div
+      className={
+        expanded ? "grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]" : undefined
+      }
+    >
+      <div className={cardCls}>
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          aria-expanded={expanded}
+          className={`flex w-full items-start justify-between gap-5 px-6 py-6 text-left transition-colors hover:bg-paper-tint focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ink sm:px-8 ${
+            expanded ? "rounded-t-[22px]" : "rounded-[22px]"
+          }`}
+        >
+          <span className="min-w-0">
+            {/* The eyebrow, as a span: everything inside a <button> has to stay
+                phrasing content, so this can't be the <Eyebrow> <p>. */}
+            <span className="label-mono block">Waiting for your approval</span>
+            <span className="display mt-3 block text-[22px] text-ink sm:text-[26px]">{app.jobTitle}</span>
+            <span className="mt-1.5 block text-[14.5px] text-ink-soft">
+              {app.company} · {questionCount} question{questionCount === 1 ? "" : "s"}
             </span>
-          ) : requiredGaps > 0 ? (
-            <span className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-attention">
-              {requiredGaps} answer{requiredGaps === 1 ? "" : "s"} needed
-            </span>
-          ) : (
-            <span className="font-mono text-[10px] font-medium uppercase tracking-[0.1em] text-accent">
-              ready to send
-            </span>
-          )}
-          <span className="font-mono text-xs text-ink-faint">{expanded ? "−" : "+"}</span>
-        </div>
-      </button>
+          </span>
+          <span className="flex shrink-0 items-center gap-3">
+            {/*
+              The one number the reviewer needs before they open anything: how
+              much of this is still theirs to do. Same three states as before —
+              a closed posting outranks a gap, a gap outranks readiness.
+            */}
+            {app.jobClosed ? (
+              <span className="rounded-full bg-danger-soft px-3.5 py-2 font-mono text-[11.5px] leading-none text-danger">
+                posting closed
+              </span>
+            ) : requiredGaps > 0 ? (
+              <span className="rounded-full bg-attention-mid px-3.5 py-2 font-mono text-[11.5px] leading-none text-attention">
+                {requiredGaps} answer{requiredGaps === 1 ? "" : "s"} needed
+              </span>
+            ) : (
+              <span className="rounded-full bg-accent-soft px-3.5 py-2 font-mono text-[11.5px] leading-none text-accent">
+                ready to send
+              </span>
+            )}
+            <span className="font-mono text-[15px] leading-none text-ink-faint">{expanded ? "−" : "+"}</span>
+          </span>
+        </button>
 
-      {expanded && (
-        <div className="border-t border-line px-4 py-4">
-          {/*
-            The packet (task #40): CV, then letter, then every answer — the
-            whole artifact an employer receives, in the order they'd read it.
-          */}
-          {app.jobClosed && (
-            <p className="mb-4 rounded-[3px] border border-danger/30 bg-danger-soft px-3 py-2 text-[13px] text-ink">
-              <span className="font-medium">This posting has closed.</span> It disappeared from the
-              company&apos;s job board after you queued it, so there is nothing left to send. Skip it —
-              approving would spend one of your applications on a form that no longer exists.
-            </p>
-          )}
+        {expanded && (
+          <div className="px-6 pb-7 sm:px-8">
+            {/*
+              The packet (task #40): CV, then letter, then every answer — the
+              whole artifact an employer receives, in the order they'd read it.
+            */}
+            {app.jobClosed && (
+              <p className="mb-5 rounded-xl bg-danger-soft px-4 py-3.5 text-[14px] leading-[1.6] text-ink-body">
+                <span className="font-semibold text-danger">This posting has closed.</span> It disappeared
+                from the company&apos;s job board after you queued it, so there is nothing left to send. Skip
+                it — approving would spend one of your applications on a form that no longer exists.
+              </p>
+            )}
 
-          {app.tailoredCv && <TailoredCvBlock cv={app.tailoredCv} applicationId={app.id} />}
+            {app.tailoredCv && <TailoredCvBlock cv={app.tailoredCv} applicationId={app.id} />}
 
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <p className="label-mono">What we&apos;ll send</p>
-            <a
-              href={app.applyUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs text-ink-soft underline decoration-line underline-offset-2 transition-colors hover:text-ink"
-            >
-              View the job posting ↗
-            </a>
-          </div>
-
-          {/*
-            Every answer is shown as a ruled register row: mono label and its
-            provenance on the left, the editable value on the right. A missing
-            required answer is stamped rather than silently left blank — the
-            gap is the point, not an embarrassment to hide.
-          */}
-          <div className="flex flex-col">
-            {editableFields.map((field) => {
-              const value = values[field.id] ?? "";
-              const missing = field.required && !value;
-              const source = sourceOf(field.id, value);
-
-              return (
-                <div
-                  key={field.id}
-                  className="field-rule grid grid-cols-1 gap-x-6 gap-y-1.5 py-3 sm:grid-cols-[minmax(9rem,13rem)_1fr]"
-                >
-                  <div className="flex flex-col items-start gap-1.5">
-                    {/*
-                      The employer wrote this question, so it's set in sans and
-                      left in its original sentence case. Forcing it through the
-                      mono uppercase label style made real ATS questions — which
-                      run to a full sentence — genuinely hard to read.
-                    */}
-                    <label className="text-[13px] leading-snug text-ink-soft" htmlFor={`f-${field.id}`}>
-                      {field.label}
-                      {field.required && <span className="text-attention"> *</span>}
-                    </label>
-                    {missing ? <NeedsYouStamp /> : <Provenance source={source} />}
-
-                    {/* Drafting is opt-in per field: the resolver deliberately
-                        left this blank, so the user asks for a draft rather
-                        than having one appear unbidden. */}
-                    <button
-                      type="button"
-                      onClick={() => draftAnswer(field.id)}
-                      disabled={pending}
-                      className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-accent hover:underline disabled:opacity-40"
-                    >
-                      {drafting === field.id && <Spinner />}
-                      {drafting === field.id ? "drafting…" : value ? "redraft with AI" : "fill with AI"}
-                    </button>
-                    {fieldNote[field.id] && (
-                      <span className="text-[11px] leading-snug text-attention">{fieldNote[field.id]}</span>
-                    )}
-                  </div>
-
-                  <div className="min-w-0">
-                    {field.type === "textarea" ? (
-                      <textarea
-                        id={`f-${field.id}`}
-                        className={`${inputCls} ${missing ? "border-attention/50" : ""}`}
-                        rows={4}
-                        maxLength={field.maxLength}
-                        value={value ?? ""}
-                        onChange={(e) => setValue(field.id, e.target.value)}
-                      />
-                    ) : field.options?.length && (field.type === "select" || field.type === "radio") ? (
-                      <select
-                        id={`f-${field.id}`}
-                        className={`${inputCls} ${missing ? "border-attention/50" : ""}`}
-                        value={value ?? ""}
-                        onChange={(e) => setValue(field.id, e.target.value)}
-                      >
-                        <option value="">— not answered —</option>
-                        {field.options.map((o) => (
-                          <option key={o} value={o}>
-                            {o}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        id={`f-${field.id}`}
-                        className={`${inputCls} ${missing ? "border-attention/50" : ""}`}
-                        maxLength={field.maxLength}
-                        value={value ?? ""}
-                        onChange={(e) => setValue(field.id, e.target.value)}
-                        placeholder={
-                          field.type === "multiselect" ? "Separate multiple choices with ||" : undefined
-                        }
-                      />
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {(clField || coverLetter) && (
-            <div className="mt-5 border-t border-line pt-4">
-              <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-2">
-                <label className="text-[13px] font-medium text-ink" htmlFor={`cl-${app.id}`}>
-                  Cover letter{clField?.required && <span className="text-attention"> *</span>}
-                </label>
-                <Provenance source={edited.has("__cl") ? "you" : "ai"} />
-              </div>
-              <textarea
-                id={`cl-${app.id}`}
-                className={inputCls}
-                rows={8}
-                maxLength={clField?.maxLength}
-                value={coverLetter}
-                onChange={(e) => {
-                  setCoverLetter(e.target.value);
-                  setEdited((s) => new Set(s).add("__cl"));
-                  setDirty(true);
-                }}
-              />
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <Eyebrow>What we&apos;ll send</Eyebrow>
+              <a
+                href={app.applyUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[13px] text-ink-soft underline decoration-line underline-offset-2 transition-colors hover:text-ink"
+              >
+                View the job posting ↗
+              </a>
             </div>
-          )}
 
-          <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-line pt-4">
-            <button
-              type="button"
-              onClick={approve}
-              disabled={pending || requiredGaps > 0 || app.jobClosed}
-              className={btnPrimary}
-              title={
-                app.jobClosed
-                  ? "This posting has closed — there is nothing left to submit to"
-                  : requiredGaps > 0
-                    ? `Still needed: ${[...openRequired.map((f) => f.label), ...(coverLetterMissing ? ["Cover letter"] : [])]
-                        .slice(0, 3)
-                        .join(", ")}`
-                    : undefined
-              }
-            >
-              {acting === "approve" && <Spinner />}
-              {acting === "approve" ? "Approving…" : "Approve & submit"}
-            </button>
-            <button type="button" onClick={save} disabled={pending || !dirty} className={btnSecondary}>
-              {acting === "save" && <Spinner />}
-              {acting === "save" ? "Saving…" : "Save edits"}
-            </button>
-            <button type="button" onClick={skip} disabled={pending} className={`${btnGhost} hover:text-danger`}>
-              {acting === "skip" && <Spinner />}
-              {acting === "skip" ? "Skipping…" : "Skip"}
-            </button>
-            {message && <span className="font-mono text-xs text-ink-soft">{message}</span>}
+            {/*
+              Every answer is shown as a ruled register row: the employer's
+              question on the left, the editable value on the right with its
+              provenance under it. A missing required answer takes the whole
+              amber row rather than being silently left blank — the gap is the
+              point, not an embarrassment to hide.
+            */}
+            <div className="mt-3 flex flex-col border-t border-line-soft">
+              {editableFields.map((field) => {
+                const value = values[field.id] ?? "";
+                const missing = field.required && !value;
+                const source = sourceOf(field.id, value);
+
+                return (
+                  <div
+                    key={field.id}
+                    className={
+                      missing
+                        ? "mt-2 grid grid-cols-1 gap-x-6 gap-y-2 rounded-xl bg-attention-soft px-3.5 py-3.5 sm:grid-cols-[minmax(9rem,14rem)_1fr]"
+                        : "field-rule grid grid-cols-1 gap-x-6 gap-y-2 py-3.5 sm:grid-cols-[minmax(9rem,14rem)_1fr]"
+                    }
+                  >
+                    <div className="flex flex-col gap-1">
+                      {/*
+                        The employer wrote this question, so it's set in sans and
+                        left in its original sentence case. Forcing it through the
+                        mono uppercase label style made real ATS questions — which
+                        run to a full sentence — genuinely hard to read.
+                      */}
+                      <label
+                        className={
+                          missing
+                            ? "text-[15px] font-semibold leading-snug text-attention"
+                            : "text-[14.5px] leading-snug text-ink"
+                        }
+                        htmlFor={`f-${field.id}`}
+                      >
+                        {field.label}
+                        {field.required && <span className="text-attention"> *</span>}
+                      </label>
+                      {missing && (
+                        <p className="text-[13px] leading-snug text-attention">
+                          Nothing in your profile answered this one, so we didn&apos;t guess.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="min-w-0">
+                      {field.type === "textarea" ? (
+                        <textarea
+                          id={`f-${field.id}`}
+                          className={`${inputCls} ${missing ? "border-attention/50" : ""}`}
+                          rows={4}
+                          maxLength={field.maxLength}
+                          value={value ?? ""}
+                          onChange={(e) => setValue(field.id, e.target.value)}
+                        />
+                      ) : field.options?.length && (field.type === "select" || field.type === "radio") ? (
+                        <select
+                          id={`f-${field.id}`}
+                          className={`${inputCls} ${missing ? "border-attention/50" : ""}`}
+                          value={value ?? ""}
+                          onChange={(e) => setValue(field.id, e.target.value)}
+                        >
+                          <option value="">— not answered —</option>
+                          {field.options.map((o) => (
+                            <option key={o} value={o}>
+                              {o}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          id={`f-${field.id}`}
+                          className={`${inputCls} ${missing ? "border-attention/50" : ""}`}
+                          maxLength={field.maxLength}
+                          value={value ?? ""}
+                          onChange={(e) => setValue(field.id, e.target.value)}
+                          placeholder={
+                            field.type === "multiselect" ? "Separate multiple choices with ||" : undefined
+                          }
+                        />
+                      )}
+
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+                        {/* Drafting is opt-in per field: the resolver deliberately
+                            left this blank, so the user asks for a draft rather
+                            than having one appear unbidden. */}
+                        <button
+                          type="button"
+                          onClick={() => draftAnswer(field.id)}
+                          disabled={pending}
+                          className="inline-flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.1em] text-accent hover:underline disabled:opacity-40"
+                        >
+                          {drafting === field.id && <Spinner />}
+                          {drafting === field.id ? "drafting…" : value ? "redraft with AI" : "fill with AI"}
+                        </button>
+                        {missing ? <NeedsYouStamp /> : <Provenance source={source} />}
+                      </div>
+
+                      {fieldNote[field.id] && (
+                        <p className="mt-2 text-[12px] leading-snug text-attention">{fieldNote[field.id]}</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {(clField || coverLetter) && (
+              <div className={`${insetCls} mt-4 px-4 py-4 sm:px-5`}>
+                <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-2">
+                  <label className="text-[15px] font-semibold text-ink" htmlFor={`cl-${app.id}`}>
+                    Cover letter{clField?.required && <span className="text-attention"> *</span>}
+                  </label>
+                  <Provenance source={edited.has("__cl") ? "you" : "ai"} />
+                </div>
+                <textarea
+                  id={`cl-${app.id}`}
+                  className={inputCls}
+                  rows={8}
+                  maxLength={clField?.maxLength}
+                  value={coverLetter}
+                  onChange={(e) => {
+                    setCoverLetter(e.target.value);
+                    setEdited((s) => new Set(s).add("__cl"));
+                    setDirty(true);
+                  }}
+                />
+              </div>
+            )}
+
+            <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-line-soft pt-5">
+              <button
+                type="button"
+                onClick={approve}
+                disabled={pending || requiredGaps > 0 || app.jobClosed}
+                className={btnLime}
+                title={
+                  app.jobClosed
+                    ? "This posting has closed — there is nothing left to submit to"
+                    : requiredGaps > 0
+                      ? `Still needed: ${[...openRequired.map((f) => f.label), ...(coverLetterMissing ? ["Cover letter"] : [])]
+                          .slice(0, 3)
+                          .join(", ")}`
+                      : undefined
+                }
+              >
+                {acting === "approve" && <Spinner />}
+                {acting === "approve" ? "Approving…" : "Approve & submit"}
+              </button>
+              <button type="button" onClick={save} disabled={pending || !dirty} className={btnSecondary}>
+                {acting === "save" && <Spinner />}
+                {acting === "save" ? "Saving…" : "Save edits"}
+              </button>
+              <button
+                type="button"
+                onClick={skip}
+                disabled={pending}
+                className={`${btnGhost} hover:text-danger`}
+              >
+                {acting === "skip" && <Spinner />}
+                {acting === "skip" ? "Skipping…" : "Skip"}
+              </button>
+              {message && <span className="font-mono text-[12.5px] text-ink-soft">{message}</span>}
+              <span className="ml-auto font-mono text-[12.5px] tabular-nums text-ink-soft">
+                {answeredCount} of {questionCount} filled
+              </span>
+            </div>
           </div>
-        </div>
+        )}
+      </div>
+
+      {/* A ledger of nothing is not worth a panel: only shown once there is at
+          least one answer to attribute. */}
+      {expanded && questionCount > 0 && (
+        <aside className="flex flex-col gap-4">
+          <div className={`${cardDarkCls} px-6 py-6`}>
+            <p className="font-mono text-[10.5px] font-medium uppercase tracking-[0.1em] text-on-slate-faint">
+              Where the answers came from
+            </p>
+            <div className="mt-4 flex flex-col gap-2.5 font-mono text-[12.5px]">
+              {PROVENANCE_ROWS.filter((row) => tally[row.key] > 0).map((row) => (
+                <div key={row.key} className="flex items-baseline justify-between gap-4">
+                  <span className="text-on-slate-faint">{row.label}</span>
+                  <span className={`tabular-nums ${row.tone}`}>{tally[row.key]}</span>
+                </div>
+              ))}
+              <div className="my-1.5 border-t border-dashed border-slate-line" />
+              <div
+                className="flex items-baseline justify-between gap-4"
+                title="Every answer above is attributed to your profile, your saved answers, you, or an AI draft you can edit. When nothing backed an answer we left it blank rather than inventing one."
+              >
+                <span className="text-on-slate-faint">Made up</span>
+                <span className="tabular-nums text-lime">0</span>
+              </div>
+            </div>
+          </div>
+        </aside>
       )}
     </div>
   );

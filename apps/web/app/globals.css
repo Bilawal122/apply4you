@@ -1,27 +1,26 @@
 @import "tailwindcss";
 
 /*
-  Apply4You design tokens — "official register".
+  Apply4You design tokens — "soft register".
 
-  The product's subject is forms, registers and stamps: the Home Office
-  sponsor register, an ATS application form, an approval. So the interface
-  borrows that grammar — a label column in mono, a value slot, a hairline
-  rule, a stamped verdict — rather than generic SaaS card-and-pill.
+  The subject is still forms, registers and stamps: the Home Office sponsor
+  register, an ATS application form, an approval. But the surface is now warm
+  paper rather than a filing cabinet — generous radii, a lime affirmative, and
+  a near-black that carries the weight the old cobalt was doing.
 
-  Two rules hold the whole system together:
+  Two rules still hold the whole system together:
 
   1. VOICE. Everything the machine produced (scores, statuses, filled values,
      counts, timestamps, verdicts) is mono. Everything a person wrote is sans.
-     Same super-family, so it reads as one system speaking in two registers.
 
   2. PROVENANCE. Every value on screen can say where it came from — your CV,
-     the AI, you, or nowhere. Cobalt is the machine's ink. Amber means the
-     machine refused to guess and needs you. Colour is information here, never
+     the AI, you, or nowhere. Lime is the affirmative mark. Amber means the
+     machine refused to guess and needs you. Colour is information, never
      decoration.
 */
 :root {
-  --background: #f1f3f6; /* cool paper stock */
-  --foreground: #12161f; /* ink */
+  --background: #f4f4f0; /* warm paper stock */
+  --foreground: #17191c; /* ink */
 }
 
 @theme inline {
@@ -30,88 +29,155 @@
   --font-sans: var(--font-sans-src);
   --font-mono: var(--font-mono-src);
 
-  --color-ink: #12161f;
-  --color-ink-soft: #5a6472;
-  --color-ink-faint: #8b94a3;
-  --color-paper: #f1f3f6;
+  /* ── ink ─────────────────────────────────────────────── */
+  --color-ink: #17191c;
+  --color-ink-body: #3f454c; /* long-form body copy */
+  --color-ink-soft: #5c6169;
+  --color-ink-faint: #8a8f97;
+
+  /* ── paper ───────────────────────────────────────────── */
+  --color-paper: #f4f4f0;
+  --color-paper-deep: #efefea; /* recessed hero / aside panel */
+  --color-paper-tint: #f6f6f2; /* inset block, neutral chip */
   --color-card: #ffffff;
-  --color-line: #d9dee6; /* hairline: structural, meant to be seen */
-  --color-line-soft: #e7ebf1;
 
-  --color-accent: #1b4dd8; /* cobalt: stamp ink — actions, verified, submitted */
-  --color-accent-soft: #e8edfd;
-  --color-accent-deep: #143aa6;
-  --color-attention: #a65a00; /* amber: needs you */
-  --color-attention-soft: #fbf0dd;
-  --color-danger: #a3342a; /* brick: failed */
-  --color-danger-soft: #f8e9e7;
+  /* ── rules ───────────────────────────────────────────── */
+  --color-line: #e1e1da; /* button + container hairline */
+  --color-line-soft: #ededE7; /* row rule inside a card */
 
-  --radius-doc: 3px; /* documents don't have soft corners */
+  /*
+    ── lime: the affirmative ───────────────────────────────
+    Lime is a fill, never an ink — 4.5:1 against it needs a dark foreground.
+    `accent` is its legible ink-weight sibling, so `text-accent` stays readable
+    on white and `bg-lime text-ink` stays readable as a button.
+  */
+  --color-lime: #c9f24c;
+  --color-lime-ink: #3f4a19; /* text sitting ON lime */
+  --color-accent: #42561a;
+  --color-accent-soft: #f1f8de;
+  --color-accent-deep: #2f3f12;
+
+  /* ── amber: needs you ────────────────────────────────── */
+  --color-attention: #8a5a10;
+  --color-attention-soft: #fef7ea;
+  --color-attention-mid: #fdf1dc;
+  --color-attention-bright: #f0c063; /* on a dark panel */
+
+  /* ── brick: failed ───────────────────────────────────── */
+  --color-danger: #9a3b2c;
+  --color-danger-soft: #fbeceb;
+
+  /* ── the dark panel ──────────────────────────────────── */
+  --color-slate: #17191c;
+  --color-slate-raised: #23262b;
+  --color-slate-line: #3a3e44;
+  --color-slate-hair: #2a2e33;
+  --color-on-slate: #f7f7f3;
+  --color-on-slate-soft: #d5d8dc;
+  --color-on-slate-mute: #b7bcc2;
+  --color-on-slate-faint: #a2a8b0;
+
+  /* Cards are soft now; the hairline does the structural work. */
+  --radius-doc: 22px;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans-src), system-ui, sans-serif;
-  font-size: 0.9375rem; /* 15px — this is a reading interface */
-  line-height: 1.55;
+  font-size: 1rem;
+  line-height: 1.5;
 }
 
 /*
-  The workhorse of the system: a form-field label. Mono, small, wide-tracked,
-  uppercase. Used for every machine-side label in the app, which is what gives
-  every screen the same "official document" texture without any ornament.
+  These live in the components layer on purpose. Tailwind v4 orders its layers
+  theme → base → components → utilities, so an unlayered rule here would
+  outrank every utility class — and `.label-mono text-on-slate-faint` on a dark
+  panel would silently render ink-soft on near-black. In the components layer
+  the utility wins, which is what every call site expects.
 */
-.label-mono {
-  font-family: var(--font-mono-src), ui-monospace, monospace;
-  font-size: 0.6875rem;
-  font-weight: 500;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-  color: var(--color-ink-faint);
+@layer components {
+  /*
+    The workhorse of the system: a form-field label. Mono, small, wide-tracked,
+    uppercase. Used for every machine-side label in the app, which is what gives
+    every screen the same "official document" texture without any ornament.
+  */
+  .label-mono {
+    font-family: var(--font-mono-src), ui-monospace, monospace;
+    font-size: 0.656rem; /* 10.5px */
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-ink-soft);
+  }
+
+  /* Display type: tight, heavy, confident — a masthead. */
+  .display {
+    font-weight: 800;
+    letter-spacing: -0.04em;
+    line-height: 1.05;
+  }
+
+  /*
+    The signature mark. When the machine refuses to guess a field, it says so in
+    the vocabulary of the thing it's filling in. It used to be a rotated rubber
+    stamp; on soft paper that read as a sticker, so it is now a flat amber chip —
+    same job, same rarity. It appears only on genuinely unanswered required
+    fields.
+  */
+  .stamp {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.3rem 0.65rem;
+    border-radius: 999px;
+    background: var(--color-attention-mid);
+    font-family: var(--font-mono-src), ui-monospace, monospace;
+    font-size: 0.688rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+
+  /* Ruled field list — label column left, value right, hairline between rows. */
+  .field-rule + .field-rule {
+    border-top: 1px solid var(--color-line-soft);
+  }
+
+  /* The recessed hero panel: warm paper with a printed dot grid. */
+  .dotgrid {
+    background-color: var(--color-paper-deep);
+    background-image: radial-gradient(#dbdbd3 1.1px, transparent 1.1px);
+    background-size: 26px 26px;
+  }
+
+  /* The live indicator — a slow blink, not a pulse. */
+  .blip {
+    animation: blip 2s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .blip {
+      animation: none;
+    }
+  }
 }
 
-/* Display type: tight, confident, set at weight 600 — a register masthead. */
-.display {
-  font-weight: 600;
-  letter-spacing: -0.035em;
-  line-height: 1.02;
+@keyframes blip {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
-/*
-  The signature mark. When the machine refuses to guess a field, it says so
-  in the vocabulary of the thing it's filling in: a rubber stamp on a form.
-  This is the one deliberately informal element in the system — everything
-  else stays perfectly square — so it has to stay rare. It appears only on
-  genuinely unanswered required fields.
-*/
-.stamp {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.1875rem 0.5rem;
-  border: 1.5px solid currentColor;
-  border-radius: 2px;
-  font-family: var(--font-mono-src), ui-monospace, monospace;
-  font-size: 0.625rem;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  transform: rotate(-1.5deg);
-  opacity: 0.92;
-}
-
-/* Ruled field list — label column left, value right, hairline between rows. */
-.field-rule + .field-rule {
-  border-top: 1px solid var(--color-line-soft);
-}
-
-/* Native controls adopt the stamp ink instead of the browser's default blue. */
+/* Native controls adopt the lime instead of the browser's default blue. */
 input[type="checkbox"],
 input[type="radio"] {
   accent-color: var(--color-accent);
 }
 
 ::selection {
-  background: var(--color-accent-soft);
+  background: var(--color-lime);
 }

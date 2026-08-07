@@ -5,7 +5,7 @@ export const metadata = { title: "Privacy Policy — Apply4You" };
 export default function PrivacyPage() {
   return (
     <LegalShell title="Privacy Policy" updated="July 2026">
-      <p>
+      <p className="text-[16.5px] leading-[1.65]">
         This policy explains what Apply4You collects, why, and the control you have over it. It is written
         to be read, not to hide behind. If anything here is unclear, email us before you sign up.
       </p>

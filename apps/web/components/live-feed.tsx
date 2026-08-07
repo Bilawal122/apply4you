@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { cardCls } from "@/components/ui";
+import { cardDarkCls } from "@/components/ui";
 
 interface FeedEvent {
   id: number;
@@ -13,14 +13,24 @@ interface FeedEvent {
   created_at: string;
 }
 
+/*
+  The one dark panel in the app, because it is the one surface that is actually
+  live. Read down the verb column and the point of the product is visible in a
+  glance: lime for the machine getting somewhere, amber for the machine stopping
+  and asking. A failure is never quieter than a success — it is the same weight,
+  the same size, one column over. There is no bright brick on this palette and
+  that is deliberate: "blocked", "needs you" and "failed" all mean the same thing
+  to the person reading — something here wants your hands.
+*/
 const STATUS_COLORS: Record<string, string> = {
-  submitted: "text-accent",
-  failed: "text-danger",
-  submitting: "text-accent",
-  approved: "text-ink-soft",
-  draft: "text-ink-soft",
-  needs_review: "text-attention",
-  skipped: "text-ink-soft/60",
+  submitted: "text-lime",
+  submitting: "text-lime",
+  approved: "text-on-slate",
+  draft: "text-on-slate-mute",
+  needs_review: "text-attention-bright",
+  failed: "text-attention-bright",
+  needs_manual_verification: "text-attention-bright",
+  skipped: "text-on-slate-faint",
 };
 
 /** FR-35: live submission feed via Supabase Realtime on application_events. */
@@ -50,23 +60,36 @@ export function LiveFeed({ initialEvents, userId }: { initialEvents: FeedEvent[]
   if (events.length === 0) return null;
 
   return (
-    <div className={`${cardCls} p-4`}>
-      <h2 className="mb-2 text-sm font-semibold text-ink">Live activity</h2>
-      <ul className="flex max-h-48 flex-col gap-1.5 overflow-y-auto">
+    <section className={`${cardDarkCls} px-6 py-6 sm:px-7`} aria-labelledby="live-feed-heading">
+      <div className="flex items-center gap-2">
+        {/* .blip is the slow blink from globals.css, and it stands down under
+            prefers-reduced-motion. */}
+        <span className="blip h-1.5 w-1.5 shrink-0 rounded-full bg-lime" aria-hidden="true" />
+        <h2
+          id="live-feed-heading"
+          className="font-mono text-[10.5px] font-medium uppercase tracking-[0.1em] text-on-slate-faint"
+        >
+          Live activity
+        </h2>
+      </div>
+
+      <ul className="mt-5 flex max-h-48 flex-col gap-3 overflow-y-auto font-mono text-[11.5px] leading-[1.4]">
         {events.map((event) => (
-          <li key={event.id} className="flex items-baseline gap-2 text-sm">
-            <span className="shrink-0 font-mono text-[11px] tabular-nums text-ink-soft/70">
+          <li key={event.id} className="flex items-baseline gap-2.5">
+            <span className="shrink-0 tabular-nums text-on-slate-faint">
               {new Date(event.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
             </span>
-            <span
-              className={`shrink-0 font-mono text-[11px] font-medium lowercase ${STATUS_COLORS[event.status] ?? "text-ink-soft"}`}
-            >
+            <span className={`shrink-0 lowercase ${STATUS_COLORS[event.status] ?? "text-on-slate-mute"}`}>
               {event.status.replace("_", " ")}
             </span>
-            <span className="text-ink-soft">{event.message}</span>
+            <span className="min-w-0 break-words text-on-slate-soft">{event.message}</span>
           </li>
         ))}
       </ul>
-    </div>
+
+      <p className="mt-5 border-t border-slate-hair pt-4 text-[12.5px] text-on-slate-faint">
+        Failures show up as loudly as successes.
+      </p>
+    </section>
   );
 }

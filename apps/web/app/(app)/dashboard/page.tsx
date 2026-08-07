@@ -8,7 +8,15 @@ import {
 } from "@apply4you/shared";
 import { createClient } from "@/lib/supabase/server";
 import { AutoApplyButton } from "@/components/auto-apply-button";
-import { ScoreBadge, SponsorBadge, cardCls } from "@/components/ui";
+import {
+  Chip,
+  ScoreBadge,
+  SponsorBadge,
+  btnLink,
+  btnSecondarySm,
+  cardCls,
+  cardDarkCls,
+} from "@/components/ui";
 import type { SponsorVerdict } from "@/lib/sponsors";
 
 interface MatchRow {
@@ -25,17 +33,39 @@ interface MatchRow {
   };
 }
 
-function Stat({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
+/**
+ * A stat tile. `tone="lime"` is the affirmative one — reserved for the count of
+ * things actually sent, so the single lime block on the page is the only number
+ * that represents work completed rather than work outstanding.
+ */
+function Stat({
+  label,
+  value,
+  hint,
+  tone = "plain",
+}: {
+  label: string;
+  value: string | number;
+  hint?: string;
+  tone?: "plain" | "lime";
+}) {
+  const lime = tone === "lime";
   return (
-    <div className={`${cardCls} p-4`}>
-      <p className="label-mono">{label}</p>
-      <p className="mt-1.5 font-mono text-2xl font-semibold tabular-nums leading-none text-ink">{value}</p>
-      {hint && <p className="mt-1 text-xs text-ink-faint">{hint}</p>}
+    <div className={`${lime ? "rounded-[22px] bg-lime" : cardCls} col-span-6 px-6 py-6 md:col-span-3`}>
+      <p className={`font-mono text-[30px] leading-none tabular-nums sm:text-[34px] ${lime ? "text-lime-ink" : "text-ink"}`}>
+        {value}
+      </p>
+      <p className={`mt-2 text-[13.5px] leading-snug ${lime ? "text-lime-ink" : "text-ink-soft"}`}>{label}</p>
+      {hint && (
+        <p className={`mt-1 font-mono text-[11px] ${lime ? "text-lime-ink/70" : "text-ink-faint"}`}>{hint}</p>
+      )}
     </div>
   );
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAY_MS = 86_400_000;
 
 function postedLabel(postedAt: string | null): string | null {
   if (!postedAt) return null;
@@ -43,18 +73,17 @@ function postedLabel(postedAt: string | null): string | null {
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
-/** A tag only appears when the underlying data actually says so — never inferred for decoration. */
-function Tag({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded-[2px] border border-line bg-paper px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-ink-soft">
-      {children}
-    </span>
-  );
+/** Bucket key for a UTC calendar day — the same day boundary the counts above use. */
+function dayKey(d: Date): string {
+  return `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
 }
 
 export default async function DashboardPage() {
   const supabase = await createClient();
-  const startOfToday = new Date(new Date().setUTCHours(0, 0, 0, 0)).toISOString();
+  const todayUtc = new Date(new Date().setUTCHours(0, 0, 0, 0));
+  const startOfToday = todayUtc.toISOString();
+  // Seven buckets ending today, so the last bar is "submitted today".
+  const weekStart = new Date(todayUtc.getTime() - 6 * DAY_MS);
 
   const [
     { count: totalSubmitted },
@@ -67,6 +96,7 @@ export default async function DashboardPage() {
     { data: appliedRows },
     { data: prefs },
     { data: reviewRows },
+    { data: weekRows },
   ] = await Promise.all([
     supabase.from("applications").select("id", { count: "exact", head: true }).eq("status", "submitted"),
     supabase
@@ -97,6 +127,15 @@ export default async function DashboardPage() {
       .order("created_at", { ascending: false })
       .limit(100)
       .overrideTypes<{ review_metrics: unknown }[]>(),
+    // The only new read: the timestamps behind the "last 7 days" chart. Every
+    // bar is a real submission — the chart is omitted entirely rather than
+    // drawn from anything invented.
+    supabase
+      .from("applications")
+      .select("submitted_at")
+      .eq("status", "submitted")
+      .gte("submitted_at", weekStart.toISOString())
+      .overrideTypes<{ submitted_at: string | null }[]>(),
   ]);
 
   // Usage is submissions in the current rolling period (auto-resets) — matches
@@ -127,12 +166,25 @@ export default async function DashboardPage() {
       .map((p) => p.data),
   );
 
+  const week = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart.getTime() + i * DAY_MS);
+    return { key: dayKey(d), label: WEEKDAYS[d.getUTCDay()], count: 0 };
+  });
+  const weekIndex = new Map(week.map((b, i) => [b.key, i] as const));
+  for (const row of weekRows ?? []) {
+    if (!row.submitted_at) continue;
+    const i = weekIndex.get(dayKey(new Date(row.submitted_at)));
+    if (i !== undefined) week[i].count += 1;
+  }
+  const weekTotal = week.reduce((n, b) => n + b.count, 0);
+  const weekPeak = Math.max(1, ...week.map((b) => b.count));
+
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4 sm:items-end">
         <div>
-          <h1 className="display text-2xl text-ink">Dashboard</h1>
-          <p className="mt-1.5 text-sm text-ink-soft">
+          <h1 className="display text-[30px] text-ink sm:text-[34px]">Dashboard</h1>
+          <p className="mt-2 text-[15.5px] text-ink-soft">
             Your matches, and everything the AI has done so far.
           </p>
         </div>
@@ -144,61 +196,114 @@ export default async function DashboardPage() {
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Stat label="Submitted total" value={totalSubmitted ?? 0} />
-        <Stat label="Submitted today" value={submittedToday ?? 0} />
-        <Stat label="Waiting for review" value={pendingReview ?? 0} />
+      <div className="grid grid-cols-12 gap-3.5">
+        <Stat label="waiting for your approval" value={pendingReview ?? 0} />
         {/* Counts what the feed shows — matches you have NOT already queued.
             The raw job_matches total includes applied jobs and disagreed with the
             feed's own number under the same label. */}
-        <Stat label="Jobs to review" value={recommended.length} hint={`${matched ?? 0} matched in total`} />
-        <Stat label="Failed" value={failed ?? 0} hint={failed ? "apply manually" : undefined} />
-        {sub && (
-          <Stat
-            label={`Plan · ${sub.plan}`}
-            value={`${planUsed} / ${sub.applications_limit}`}
-            hint={planResets ? `resets ${planResets}` : undefined}
-          />
-        )}
-      </div>
+        <Stat
+          label="matched, not yet filled"
+          value={recommended.length}
+          hint={`${matched ?? 0} matched in total`}
+        />
+        <Stat label="failed to submit" value={failed ?? 0} hint={failed ? "apply manually" : undefined} />
+        <Stat label="sent in total" value={totalSubmitted ?? 0} tone="lime" />
 
-      {review.sample > 0 && (
-        <section>
-          <h2 className="display mb-3 text-lg text-ink">Review quality</h2>
-          {/* Swapped wholesale rather than appended to cardCls: two competing
-              bg-/border- utilities are the same specificity, so which one wins
-              is down to CSS source order, not the order they're written here. */}
-          <div
-            className={`p-4 ${
-              review.redFlag
-                ? "rounded-[3px] border border-attention/40 bg-attention-soft"
-                : cardCls
-            }`}
+        <section
+          className={`${cardCls} col-span-12 px-6 py-6 sm:px-7 ${sub ? "lg:col-span-8" : ""}`}
+          aria-labelledby="sent-chart-heading"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <h2 id="sent-chart-heading" className="label-mono">
+              Applications sent
+            </h2>
+            <span className="font-mono text-[11.5px] text-ink-soft">last 7 days</span>
+          </div>
+
+          <div className="mt-6 flex items-end gap-2 sm:gap-3">
+            {week.map((bucket, i) => (
+              <div key={bucket.key} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+                <span className="font-mono text-[10.5px] tabular-nums text-ink-faint">{bucket.count}</span>
+                <div className="flex h-[130px] w-full items-end">
+                  <div
+                    className={`w-full rounded-lg ${
+                      bucket.count === 0 ? "bg-line-soft" : i === week.length - 1 ? "bg-ink" : "bg-line"
+                    }`}
+                    style={{
+                      height: bucket.count === 0 ? "3px" : `${Math.max(8, (bucket.count / weekPeak) * 100)}%`,
+                    }}
+                  />
+                </div>
+                <span className="font-mono text-[10.5px] text-ink-soft">{bucket.label}</span>
+              </div>
+            ))}
+          </div>
+
+          <p className="mt-5 border-t border-line-soft pt-4 font-mono text-[11.5px] tabular-nums text-ink-soft">
+            {submittedToday ?? 0} today · {weekTotal} in the last 7 days
+          </p>
+        </section>
+
+        {sub && (
+          <section
+            className={`${cardDarkCls} col-span-12 px-6 py-6 sm:px-7 lg:col-span-4`}
+            aria-labelledby="plan-heading"
           >
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <h2
+              id="plan-heading"
+              className="font-mono text-[10.5px] font-medium uppercase tracking-[0.1em] text-on-slate-faint"
+            >
+              Plan · {sub.plan}
+            </h2>
+            <p className="mt-5 font-mono text-[34px] leading-none tabular-nums text-on-slate">
+              {planUsed} / {sub.applications_limit}
+            </p>
+            <p className="mt-2 text-[13.5px] text-on-slate-soft">submitted this period</p>
+            {planResets && (
+              <p className="mt-5 border-t border-slate-hair pt-4 font-mono text-[11.5px] text-on-slate-faint">
+                resets {planResets}
+              </p>
+            )}
+          </section>
+        )}
+
+        {review.sample > 0 && (
+          /* Swapped wholesale rather than appended to cardCls: two competing
+             bg-/border- utilities are the same specificity, so which one wins
+             is down to CSS source order, not the order they're written here. */
+          <section
+            className={`col-span-12 px-6 py-6 sm:px-7 ${
+              review.redFlag ? "rounded-[22px] bg-attention-soft" : cardCls
+            }`}
+            aria-labelledby="review-quality-heading"
+          >
+            <h2 id="review-quality-heading" className="label-mono">
+              Review quality
+            </h2>
+            <div className="mt-5 grid grid-cols-2 gap-5 sm:grid-cols-3">
               <div>
-                <p className="label-mono">Median review</p>
-                <p className="mt-1.5 font-mono text-2xl font-semibold tabular-nums leading-none text-ink">
+                <p className="font-mono text-[26px] leading-none tabular-nums text-ink">
                   {review.medianSeconds}s
                 </p>
+                <p className="mt-2 text-[13.5px] text-ink-soft">median review</p>
               </div>
               <div>
-                <p className="label-mono">You changed something</p>
-                <p className="mt-1.5 font-mono text-2xl font-semibold tabular-nums leading-none text-ink">
+                <p className="font-mono text-[26px] leading-none tabular-nums text-ink">
                   {Math.round(review.editRate * 100)}%
                 </p>
+                <p className="mt-2 text-[13.5px] text-ink-soft">you changed something</p>
               </div>
               <div>
-                <p className="label-mono">Approved unopened</p>
-                <p className="mt-1.5 font-mono text-2xl font-semibold tabular-nums leading-none text-ink">
+                <p className="font-mono text-[26px] leading-none tabular-nums text-ink">
                   {Math.round(review.unopenedRate * 100)}%
                 </p>
+                <p className="mt-2 text-[13.5px] text-ink-soft">approved unopened</p>
               </div>
             </div>
-            <p className="mt-3 border-t border-line pt-3 text-[13px] text-ink-soft">
+            <p className="mt-5 border-t border-line-soft pt-4 text-[13.5px] leading-[1.6] text-ink-body">
               {review.redFlag ? (
                 <>
-                  <span className="font-medium text-attention">
+                  <span className="font-semibold text-attention">
                     Median review is under {REVIEW_RED_FLAG_SECONDS}s.
                   </span>{" "}
                   DECISIONS.md D6 treats that as a red flag equal to a failed submission — the review
@@ -210,87 +315,93 @@ export default async function DashboardPage() {
                 median above {REVIEW_RED_FLAG_SECONDS}s — a gate nobody reads is not a gate.</>
               )}
             </p>
-          </div>
-        </section>
-      )}
+          </section>
+        )}
 
-      <section>
-        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
-          <div className="flex items-baseline gap-2.5">
-            <h2 className="display text-lg text-ink">Recommended jobs</h2>
-            <span className="rounded-[2px] border border-line bg-card px-1.5 py-0.5 font-mono text-xs tabular-nums text-ink-soft">
-              {recommended.length}
-            </span>
+        <section
+          className={`${cardCls} col-span-12 px-6 py-6 sm:px-7`}
+          aria-labelledby="recommended-heading"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <h2 id="recommended-heading" className="label-mono">
+                Recommended jobs
+              </h2>
+              <span className="font-mono text-[11.5px] tabular-nums text-ink-faint">
+                {recommended.length}
+              </span>
+            </div>
+            <Link href="/feed" className={btnLink}>
+              see all with filters ↗
+            </Link>
           </div>
-          <Link
-            href="/feed"
-            className="font-mono text-[10px] uppercase tracking-[0.1em] text-accent hover:underline"
-          >
-            see all with filters ↗
-          </Link>
-        </div>
 
-        {recommended.length === 0 ? (
-          <div className={`${cardCls} p-10 text-center`}>
-            <p className="text-sm font-medium text-ink">Nothing new to recommend</p>
-            <p className="mx-auto mt-2 max-w-md text-sm text-ink-soft">
-              You&apos;ve queued everything that fits right now. New roles appear as company boards
-              are re-polled — or widen your{" "}
-              <Link href="/preferences" className="underline decoration-line underline-offset-2">
-                preferences
-              </Link>
-              .
-            </p>
-          </div>
-        ) : (
-          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {recommended.slice(0, 9).map((m) => {
-              const posted = postedLabel(m.jobs.posted_at);
-              const remote = /remote/i.test(m.jobs.location ?? "");
-              return (
-                <li key={m.jobs.id} className={`${cardCls} flex flex-col p-4 transition-colors hover:border-ink-soft/40`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-ink-faint">
-                      {posted ?? m.jobs.ats_type}
-                    </span>
-                    <ScoreBadge score={m.score} />
-                  </div>
-
-                  <p className="mt-2 text-sm text-ink-soft">{m.jobs.company}</p>
-                  <Link
-                    href={`/jobs/${m.jobs.id}`}
-                    className="mt-0.5 text-[15px] font-semibold leading-snug text-ink transition-colors hover:text-accent"
+          {recommended.length === 0 ? (
+            <div className="py-10 text-center">
+              <p className="text-[15px] font-semibold text-ink">Nothing new to recommend</p>
+              <p className="mx-auto mt-2 max-w-md text-[14.5px] leading-[1.6] text-ink-body">
+                You&apos;ve queued everything that fits right now. New roles appear as company boards
+                are re-polled — or widen your{" "}
+                <Link href="/preferences" className="underline decoration-line underline-offset-2">
+                  preferences
+                </Link>
+                .
+              </p>
+            </div>
+          ) : (
+            <ul className="mt-3 flex flex-col">
+              {recommended.slice(0, 9).map((m) => {
+                const posted = postedLabel(m.jobs.posted_at);
+                const remote = /remote/i.test(m.jobs.location ?? "");
+                return (
+                  <li
+                    key={m.jobs.id}
+                    className="flex flex-wrap items-center gap-x-5 gap-y-3 border-t border-line-soft py-3.5 first:border-t-0"
                   >
-                    {m.jobs.title}
-                  </Link>
+                    <div className="flex min-w-0 grow basis-[15rem] items-center gap-4">
+                      <ScoreBadge score={m.score} />
+                      <div className="min-w-0">
+                        <Link
+                          href={`/jobs/${m.jobs.id}`}
+                          className="block truncate text-[15px] font-semibold tracking-[-0.015em] text-ink transition-colors hover:text-accent"
+                        >
+                          {m.jobs.title}
+                        </Link>
+                        <p className="mt-0.5 truncate text-[13px] text-ink-soft">
+                          {m.jobs.company} · {m.jobs.location ?? "—"}
+                        </p>
+                        {m.reason && (
+                          <p className="mt-1 line-clamp-1 text-[13px] leading-snug text-ink-faint">
+                            {m.reason}
+                          </p>
+                        )}
+                      </div>
+                    </div>
 
-                  <div className="mt-2.5 flex flex-wrap gap-1.5">
-                    {remote && <Tag>remote</Tag>}
-                    <Tag>{m.jobs.ats_type}</Tag>
-                    {m.jobs.sponsor_verdict?.licensed && <SponsorBadge verdict={m.jobs.sponsor_verdict} />}
-                  </div>
+                    <div className="flex flex-wrap items-center gap-1.5 sm:w-[11.5rem]">
+                      {remote && <Chip>remote</Chip>}
+                      <Chip>{m.jobs.ats_type}</Chip>
+                      {m.jobs.sponsor_verdict?.licensed && (
+                        <SponsorBadge verdict={m.jobs.sponsor_verdict} />
+                      )}
+                    </div>
 
-                  {m.reason && (
-                    <p className="mt-2.5 line-clamp-2 text-[13px] leading-snug text-ink-soft">{m.reason}</p>
-                  )}
-
-                  <div className="mt-auto flex items-end justify-between gap-3 pt-3">
-                    <span className="min-w-0 truncate text-xs text-ink-faint">
-                      {m.jobs.location ?? "—"}
+                    {/* The ATS name already has its own chip, so an unknown
+                        posting date stays an honest blank rather than borrowing it. */}
+                    <span className="font-mono text-[12px] text-ink-soft sm:w-[7.5rem]">
+                      {posted ?? "—"}
                     </span>
-                    <Link
-                      href={`/jobs/${m.jobs.id}`}
-                      className="shrink-0 rounded-[3px] border border-line bg-card px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-ink-soft hover:bg-paper"
-                    >
+
+                    <Link href={`/jobs/${m.jobs.id}`} className={btnSecondarySm}>
                       Details
                     </Link>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
