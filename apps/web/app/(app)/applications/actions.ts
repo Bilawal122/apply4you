@@ -58,7 +58,10 @@ export async function saveApplicationFields(
     .from("applications")
     .update({
       resolved_fields: merged,
-      cover_letter: coverLetter ?? undefined,
+      // Never `?? undefined`: supabase-js drops undefined keys, so a cleared
+      // letter kept the old text while the action still reported "Saved" — the
+      // employer then received prose the user had explicitly deleted.
+      cover_letter: coverLetter?.trim() ? coverLetter : null,
       unresolved_fields: unresolved,
       status,
     })

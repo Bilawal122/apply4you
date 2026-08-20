@@ -26,27 +26,32 @@ export async function fillGreenhouseForm(
   resume: LocalFile,
 ): Promise<void> {
   for (const field of fields) {
-    if (field.type === "file") {
-      if (field.id === "resume") {
-        const fileInput = page.locator('input[type="file"]').first();
-        await fileInput.setInputFiles(resume.path);
-        // Greenhouse parses the resume and may autofill fields. Wait, then let
-        // our values overwrite anything it filled (profile is source of truth).
-        await humanPause(2500, 4000);
-      }
-      continue;
-    }
-
-    // Demographic values reach here only if the APPLICANT typed them in
-    // review (resolution never generates them — DECISIONS.md D3); a value the
-    // user chose to give is theirs to deliver, so fill does not re-filter.
-    const value = values[field.id];
-    if (value == null || value === "") continue;
-
     // One awkward control must never abort the whole application: fill what we
     // can. A required field left empty surfaces as a submit validation error,
     // recorded with an "apply manually" link — never a silent wrong answer.
+    //
+    // The try MUST open before the file branch. It used to open only around
+    // fillOneField, so a throwing setInputFiles escaped the loop and killed the
+    // whole submission — on the one ATS cleared for real submissions (D3).
+    // Lever, Ashby and Workable all open theirs here; Greenhouse now matches.
     try {
+      if (field.type === "file") {
+        if (field.id === "resume") {
+          const fileInput = page.locator('input[type="file"]').first();
+          await fileInput.setInputFiles(resume.path);
+          // Greenhouse parses the resume and may autofill fields. Wait, then let
+          // our values overwrite anything it filled (profile is source of truth).
+          await humanPause(2500, 4000);
+        }
+        continue;
+      }
+
+      // Demographic values reach here only if the APPLICANT typed them in
+      // review (resolution never generates them — DECISIONS.md D3); a value the
+      // user chose to give is theirs to deliver, so fill does not re-filter.
+      const value = values[field.id];
+      if (value == null || value === "") continue;
+
       await fillOneField(page, field, value);
     } catch (err) {
       console.error(`[greenhouse fill] ${field.id} (${field.label.slice(0, 50)}) failed: ${String(err).slice(0, 120)}`);

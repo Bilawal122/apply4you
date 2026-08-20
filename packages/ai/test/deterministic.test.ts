@@ -64,6 +64,69 @@ describe("resolveDeterministic (FR-12)", () => {
     expect(remaining).toHaveLength(0);
   });
 
+  /**
+   * Near-miss regression net (TESTING.md T0-4).
+   *
+   * Every case here previously resolved to the candidate's OWN data and shipped
+   * to an employer stamped `answer_sources = "profile"` — a wrong answer wearing
+   * the most trustworthy label the product has. They must fall through instead.
+   */
+  describe("near-misses never answer with the candidate's own data", () => {
+    it.each([
+      ["reference_email", "Reference email"],
+      ["referee_email", "Referee's email address"],
+      ["emergency_phone", "Emergency contact phone"],
+      ["manager_phone", "Manager's phone number"],
+      ["prev_employer_email", "Previous employer email"],
+      ["spouse_name", "Spouse full name"],
+    ])("leaves %s (%s) for the LLM", (id, label) => {
+      const { resolved, remaining } = resolveDeterministic([f({ id, label, type: "text" })], FIXTURE_PROFILE);
+      expect(resolved[id]).toBeUndefined();
+      expect(remaining).toHaveLength(1);
+    });
+
+    it("does not answer a location PREFERENCE with the current location", () => {
+      const fields: Field[] = [
+        f({ id: "pref_city", label: "Which city would you prefer to work from?", type: "text" }),
+        f({ id: "desired_location", label: "Desired location", type: "text" }),
+        f({ id: "relocate", label: "Are you willing to relocate to another city?", type: "text" }),
+      ];
+      const { resolved, remaining } = resolveDeterministic(fields, FIXTURE_PROFILE);
+      expect(Object.keys(resolved)).toHaveLength(0);
+      expect(remaining).toHaveLength(3);
+    });
+
+    it("still answers the candidate's own contact fields", () => {
+      const fields: Field[] = [
+        f({ id: "email", label: "Email", type: "email" }),
+        f({ id: "phone", label: "Mobile phone", type: "phone" }),
+        f({ id: "location", label: "Current location", type: "text" }),
+      ];
+      const { resolved } = resolveDeterministic(fields, FIXTURE_PROFILE);
+      expect(resolved["email"]).toBe("jordan.reyes@example.com");
+      expect(resolved["phone"]).toBe("+1 415 555 0182");
+      expect(resolved["location"]).toBe("San Francisco, CA");
+    });
+
+    it("never emits a half-name when the surname is missing", () => {
+      const { resolved, remaining } = resolveDeterministic(
+        [f({ id: "name", label: "Full name", type: "text" })],
+        { ...FIXTURE_PROFILE, lastName: "" },
+      );
+      expect(resolved["name"]).toBeUndefined();
+      expect(remaining).toHaveLength(1);
+    });
+
+    it("treats a whitespace-only profile field as absent, not as an empty answer", () => {
+      const { resolved, remaining } = resolveDeterministic(
+        [f({ id: "phone", label: "Phone", type: "phone" })],
+        { ...FIXTURE_PROFILE, phone: "   " },
+      );
+      expect(resolved["phone"]).toBeUndefined();
+      expect(remaining).toHaveLength(1);
+    });
+  });
+
   it("defers to the LLM when a select's options don't contain the profile value", () => {
     const { resolved, remaining } = resolveDeterministic(
       [f({ id: "location_select", label: "Location", type: "select", options: ["New York", "Remote"], required: true })],

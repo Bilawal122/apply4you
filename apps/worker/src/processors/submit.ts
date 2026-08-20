@@ -12,11 +12,15 @@ import {
   type PlanId,
   type ResolvedValues,
   type SubmitResult,
+  TailoredCvSchema,
+  resolveTailoredCv,
 } from "@apply4you/shared";
 import { getAdapter, type JobRef, type LocalFile } from "@apply4you/ats";
 import { workerConnection } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
 import { withBrowserContext } from "../browser/pool.js";
+import { renderCvPdf } from "../packet/render-cv.js";
+import { loadProfileAndPrefs } from "../profile-data.js";
 import { notifyFailed, notifySubmitted } from "../notify.js";
 
 type SubmitData = { applicationId: string };
@@ -208,7 +212,7 @@ async function submitApplication(applicationId: string): Promise<void> {
   const { data: app } = await db
     .from("applications")
     .select(
-      "id, user_id, form_schema, resolved_fields, cover_letter, jobs!inner(id, ats_type, external_id, apply_url, title, company, location, description, board_sources(slug))",
+      "id, user_id, form_schema, resolved_fields, cover_letter, tailored_cv, jobs!inner(id, ats_type, external_id, apply_url, title, company, location, description, board_sources(slug))",
     )
     .eq("id", applicationId)
     .single();
@@ -255,13 +259,62 @@ async function submitApplication(applicationId: string): Promise<void> {
   const tempDir = await mkdtemp(join(tmpdir(), "a4y-"));
   const resumePath = join(tempDir, profileRow.resume_filename ?? "resume.pdf");
   await writeFile(resumePath, Buffer.from(await blob.arrayBuffer()));
-  const resume: LocalFile = {
+  let resume: LocalFile = {
     path: resumePath,
     filename: profileRow.resume_filename ?? "resume.pdf",
     mimeType: resumePath.endsWith(".docx")
       ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
       : "application/pdf",
   };
+
+  /*
+   * Send the document the user actually approved (tasks #40/#45).
+   *
+   * The review card shows a tailored CV and tells the user it is what the
+   * employer receives. Until now nothing sent it: resolve.ts stored the
+   * selection, the web preview rendered it, and submit uploaded the original
+   * resume regardless — the purest form of "what the user approved is not what
+   * was sent", and the same defect class as the cover-letter one.
+   *
+   * The PDF comes from renderCvHtml, the exact markup the preview serves (it
+   * lives in @apply4you/shared for this reason), so the artifact and the
+   * preview cannot drift. A selection is indices into the profile, so this
+   * still cannot put words in the CV that the candidate did not write.
+   */
+  const storedCv = TailoredCvSchema.safeParse(app.tailored_cv);
+  if (storedCv.success) {
+    try {
+      const { profile } = await loadProfileAndPrefs(app.user_id);
+      const pdf = await renderCvPdf(profile, resolveTailoredCv(profile, storedCv.data));
+      const cvFilename =
+        `${[profile.firstName, profile.lastName].filter(Boolean).join("-") || "candidate"}-CV.pdf`.replace(
+          /[^\w.-]+/g,
+          "-",
+        );
+      const cvPath = join(tempDir, cvFilename);
+      await writeFile(cvPath, pdf);
+      resume = { path: cvPath, filename: cvFilename, mimeType: "application/pdf" };
+      // Retention (DECISIONS.md D4): keep the exact bytes the employer got.
+      // Best-effort — a storage hiccup must not change what we send.
+      await db.storage
+        .from("artifacts")
+        .upload(`cvs/${applicationId}.pdf`, pdf, { contentType: "application/pdf", upsert: true })
+        .catch(() => undefined);
+    } catch (err) {
+      // Never block a real application on a PDF render. But never let the
+      // record imply the tailored CV went out when the original did.
+      console.error(
+        `[submit] ${applicationId}: tailored CV render failed, sending the original resume:`,
+        String(err).slice(0, 200),
+      );
+      await logEvent(
+        applicationId,
+        app.user_id,
+        "submitting",
+        "Could not build your tailored CV — your original resume was sent instead",
+      );
+    }
+  }
 
   const adapter = getAdapter(jobRow.ats_type);
   const jobRef: JobRef = {
