@@ -280,7 +280,7 @@ export function ScoreDial({ score, size = 64 }: { score: number; size?: number }
  * which path filled each one, and inventing that distinction would be exactly
  * the kind of confident guess this product refuses to make.
  */
-export type Source = "profile" | "library" | "ai" | "you" | "unknown";
+export type Source = "profile" | "library" | "ai" | "you" | "unknown" | "unrecorded";
 
 const SOURCE_COPY: Record<Source, { label: string; cls: string }> = {
   profile: { label: "from your profile", cls: "text-ink-soft" },
@@ -291,6 +291,12 @@ const SOURCE_COPY: Record<Source, { label: string; cls: string }> = {
   ai: { label: "drafted by AI · edit freely", cls: "text-accent" },
   you: { label: "you wrote this", cls: "text-ink-soft" },
   unknown: { label: "we didn't guess", cls: "text-attention" },
+  // A value with no recorded author. DESIGN.md allows only states that are
+  // honestly derivable from what we store, and this is one of them: packets
+  // resolved before answer_sources existed carry values whose origin we
+  // genuinely do not know. Claiming "from your profile" for those was the
+  // product asserting its most trusted label on its least verified data.
+  unrecorded: { label: "source not recorded", cls: "text-attention" },
 };
 
 export function Provenance({ source }: { source: Source }) {
