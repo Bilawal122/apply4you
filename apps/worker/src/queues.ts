@@ -25,7 +25,14 @@ export const queues = {
   embedding: new Queue(QUEUES.embedding, { connection }),
   profileEmbedding: new Queue(QUEUES.profileEmbedding, { connection }),
   matching: new Queue(QUEUES.matching, { connection }),
-  resolve: new Queue(QUEUES.resolve, { connection }),
+  // Resolution only reads a form and writes a draft, so it is safe to retry —
+  // and the failure handler in processors/resolve.ts only reports on the final
+  // attempt. Submission queues deliberately keep BullMQ's single-attempt
+  // default: a timed-out submit click may still have reached the employer.
+  resolve: new Queue(QUEUES.resolve, {
+    connection,
+    defaultJobOptions: { attempts: 3, backoff: { type: "exponential", delay: 5_000 } },
+  }),
   submitGreenhouse: new Queue(QUEUES.submitGreenhouse, { connection }),
   submitLever: new Queue(QUEUES.submitLever, { connection }),
   submitAshby: new Queue(QUEUES.submitAshby, { connection }),

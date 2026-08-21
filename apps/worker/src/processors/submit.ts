@@ -164,9 +164,21 @@ async function recordAtsOutcome(atsType: AtsType, ok: boolean, reason?: string):
 
   if (ok) {
     if (health.consecutive_failures > 0 || health.paused) {
+      // `paused: false` belongs here. Without it the breaker was a one-way
+      // latch: the branch already tested `health.paused` but never cleared it,
+      // and nothing else in the codebase could — no admin UI, no script, no
+      // probe. Three captcha failures halted an ATS for every user until
+      // someone ran raw SQL. Re-arming stays deliberate (DECISIONS.md D3 says
+      // manual re-arm) — see scripts/unpause-ats.ts — but a submission that
+      // demonstrably worked is the strongest possible evidence the ATS is back.
       await db
         .from("ats_health")
-        .update({ consecutive_failures: 0, last_failure_reason: null, updated_at: new Date().toISOString() })
+        .update({
+          consecutive_failures: 0,
+          last_failure_reason: null,
+          paused: false,
+          updated_at: new Date().toISOString(),
+        })
         .eq("ats_type", atsType);
     }
     return;
