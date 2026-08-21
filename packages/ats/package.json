@@ -11,7 +11,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "@apply4you/shared": "workspace:*",
@@ -20,6 +21,7 @@
   "devDependencies": {
     "@types/node": "^22.20.0",
     "playwright-core": "^1.53.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.10"
   }
 }

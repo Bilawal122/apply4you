@@ -8,7 +8,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "seed:boards": "tsx src/scripts/seed-boards.ts"
+    "seed:boards": "tsx src/scripts/seed-boards.ts",
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@apply4you/ai": "workspace:*",
@@ -23,6 +24,7 @@
   },
   "devDependencies": {
     "tsx": "^4.20.0",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.10"
   }
 }
