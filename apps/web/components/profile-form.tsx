@@ -336,9 +336,11 @@ export function ProfileForm({
       </section>
 
       <section className={ruledSection}>
-        <label className={labelCls}>
-          Professional summary (leave blank to auto-generate from your profile)
-        </label>
+        <label className={labelCls}>Professional summary</label>
+        <p className="mb-2.5 text-[13px] leading-[1.5] text-ink-soft">
+          Leave it blank and we&apos;ll write one from your profile shortly after you save —
+          it appears here once it&apos;s ready. Anything you write yourself is kept as-is.
+        </p>
         <textarea className={inputCls} rows={4} value={profile.summary} onChange={(e) => set("summary", e.target.value)} />
       </section>
 
