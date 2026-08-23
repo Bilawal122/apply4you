@@ -14,6 +14,10 @@ AI job-application service: upload a resume once, get matched to jobs from Green
 | Supabase | cloud | Postgres + pgvector, Auth, Storage (resumes, artifacts), Realtime |
 | Redis | Railway/Upstash | BullMQ queues |
 
+**Getting it running:** [RUNBOOK.md](RUNBOOK.md) — `./scripts/dev-up.sh` brings a
+fresh clone up in one command, and the runbook covers the first supervised
+submission (DECISIONS.md D3).
+
 ## Setup
 
 ### 1. Supabase
