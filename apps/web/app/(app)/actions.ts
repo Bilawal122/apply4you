@@ -44,7 +44,10 @@ export async function saveProfile(_prev: SaveState, formData: FormData): Promise
     .eq("user_id", user.id);
   if (error) return { error: error.message };
 
-  // Profile changed -> re-embed -> re-match (worker chain).
+  // Profile changed -> re-embed -> re-match (worker chain). enqueueProfileEmbedding
+  // is itself bounded and logs its own failures, so this can no longer hang the
+  // save — which is exactly what it did: the row was written, the enqueue never
+  // returned, and Vercel killed the function with `POST /profile 0`.
   try {
     await enqueueProfileEmbedding(user.id);
   } catch {
