@@ -72,6 +72,52 @@ async function embedOneProfileFor(userId: string): Promise<void> {
   await queues.matching.add("match-user", { userId }, { jobId: `match-${userId}-${Date.now()}` });
 }
 
+/**
+ * Profiles that were saved while Redis was unreachable.
+ *
+ * The web save enqueues the profile embedding best-effort, because a queue
+ * that is down must never cost someone their save. Nothing retried it, though,
+ * and the nightly fan-out below only visits profiles where `embedding is not
+ * null` — so a profile that missed its enqueue was excluded from matching
+ * permanently. The user sees an empty feed and there is no error anywhere to
+ * explain it, which is the worst shape a failure can take.
+ *
+ * Called at the two moments the gap can actually be closed: worker boot (where
+ * Redis is definitionally back, since main() pings it first) and the nightly
+ * fan-out, which catches a flap that happened while the worker stayed up.
+ */
+export async function enqueueMissingProfileEmbeddings(): Promise<number> {
+  const db = supabaseAdmin();
+  const { data: rows } = await db
+    .from("profiles")
+    .select("user_id, first_name, skills, work_history, resume_storage_path")
+    .is("embedding", null);
+
+  let queued = 0;
+  for (const row of rows ?? []) {
+    // A row with nothing in it is created at signup. Embedding that spends a
+    // call to vectorise nothing and hands the user matches against noise, so
+    // an empty profile stays unembedded until they actually fill it in.
+    const hasContent =
+      Boolean(row.first_name?.trim()) ||
+      Boolean(row.resume_storage_path) ||
+      ((row.skills as string[] | null) ?? []).length > 0 ||
+      ((row.work_history as unknown[] | null) ?? []).length > 0;
+    if (!hasContent) continue;
+
+    // Unique jobId, like the web producer's. A fixed one would be permanently
+    // taken after the first backfill — BullMQ keeps completed jobs by default,
+    // so every later boot would silently no-op. Re-embedding a profile costs a
+    // fraction of a cent; never embedding it costs the user their matches.
+    await queues.profileEmbedding
+      .add("embed-profile", { userId: row.user_id }, { jobId: `embed-profile-backfill-${row.user_id}-${Date.now()}` })
+      .catch(() => undefined);
+    queued++;
+  }
+  if (queued) console.log(`[embed-profile] backfilled ${queued} profile(s) that had no embedding`);
+  return queued;
+}
+
 export function startEmbeddingWorker(): Worker {
   return new Worker(
     QUEUES.embedding,

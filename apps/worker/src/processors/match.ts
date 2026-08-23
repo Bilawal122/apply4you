@@ -4,6 +4,7 @@ import { generateMatchReasons, withUsageUser } from "@apply4you/ai";
 import { queues, workerConnection } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
 import { loadProfileAndPrefs } from "../profile-data.js";
+import { enqueueMissingProfileEmbeddings } from "./embed.js";
 
 type MatchUserData = { userId: string };
 
@@ -90,6 +91,10 @@ export async function scheduleNightlyMatching(): Promise<void> {
 
 async function matchAll(): Promise<void> {
   const db = supabaseAdmin();
+  // A profile whose embedding enqueue was dropped (Redis down at save time)
+  // would never appear in the query below, and so would never be matched.
+  // Give it its embedding first; it joins tomorrow's fan-out.
+  await enqueueMissingProfileEmbeddings();
   const { data: users } = await db.from("profiles").select("user_id").not("embedding", "is", null);
   for (const u of users ?? []) {
     await queues.matching.add("match-user", { userId: u.user_id }, { jobId: `match-${u.user_id}-${Date.now()}` });
