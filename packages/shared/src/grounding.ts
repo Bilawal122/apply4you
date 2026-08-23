@@ -80,7 +80,13 @@ export function groundAnswer(profile: Profile, field: Field, value: string | nul
   // Right-to-work claims need an explicit profile fact behind them. Nothing
   // else in the profile can imply one: a UK location does not establish a
   // right to work, and neither does a UK employment history.
-  if (isWorkAuthorizationField(field.id, field.label) && !profile.workAuthorization.trim()) {
+  // `?.` is load-bearing: the résumé parser omits workAuthorization entirely
+  // when the CV does not state it — which is almost always, since CVs do not
+  // carry immigration status — so this arrives as undefined, not "". Reading
+  // .trim() off it threw and took down the whole resolution, which is a worse
+  // failure than the one this gate exists to prevent. Absent is treated as
+  // unstated, which is the safe direction.
+  if (isWorkAuthorizationField(field.id, field.label) && !profile.workAuthorization?.trim()) {
     return null;
   }
 

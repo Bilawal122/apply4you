@@ -108,6 +108,26 @@ describe("resolveDeterministic (FR-12)", () => {
       expect(resolved["location"]).toBe("San Francisco, CA");
     });
 
+    it("does not answer a question scoped by a condition it cannot check", () => {
+      // Real Stripe form. This answered "Bolton, Greater Manchester, United
+      // Kingdom" — a true value, a wrong answer, stamped "profile".
+      const fields: Field[] = [
+        f({ id: "q1", label: "If located in the US, in what city and state do you reside?", type: "text", required: true }),
+        f({ id: "q2", label: "If you are based outside the UK, what is your phone number?", type: "phone" }),
+      ];
+      const { resolved, remaining } = resolveDeterministic(fields, FIXTURE_PROFILE);
+      expect(Object.keys(resolved)).toHaveLength(0);
+      expect(remaining).toHaveLength(2);
+    });
+
+    it("still answers the unconditional form of the same question", () => {
+      const { resolved } = resolveDeterministic(
+        [f({ id: "city", label: "In what city do you reside?", type: "text" })],
+        FIXTURE_PROFILE,
+      );
+      expect(resolved["city"]).toBe("San Francisco, CA");
+    });
+
     it("never emits a half-name when the surname is missing", () => {
       const { resolved, remaining } = resolveDeterministic(
         [f({ id: "name", label: "Full name", type: "text" })],

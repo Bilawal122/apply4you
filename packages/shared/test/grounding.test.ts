@@ -52,6 +52,15 @@ describe("groundAnswer — right-to-work claims need a profile fact", () => {
     expect(groundAnswer(profile(""), field("q", label), "Yes")).toBeNull();
   });
 
+  it("treats a MISSING workAuthorization as absent, without throwing", () => {
+    // The résumé parser omits the key when the CV does not state it — which is
+    // the normal case. This threw on a real parsed profile.
+    const noKey = { ...profile("") } as Profile;
+    delete (noKey as Partial<Profile>).workAuthorization;
+    expect(() => groundAnswer(noKey, field("q", REAL_QUESTIONS[0]!), "No")).not.toThrow();
+    expect(groundAnswer(noKey, field("q", REAL_QUESTIONS[0]!), "No")).toBeNull();
+  });
+
   it("treats whitespace-only workAuthorization as absent", () => {
     expect(groundAnswer(profile("   "), field("q", REAL_QUESTIONS[0]!), "Yes")).toBeNull();
   });

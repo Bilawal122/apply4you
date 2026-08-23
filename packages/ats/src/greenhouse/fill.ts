@@ -84,6 +84,18 @@ async function fillOneField(page: Page, field: Field, value: string): Promise<vo
   }
 
   if (field.type === "select") {
+    // Native <select> first. Greenhouse's current UI renders a react-select
+    // combobox, but its embedded/legacy forms render a real <select> — the same
+    // split controlFor() already accounts for — and this branch went straight to
+    // pickComboOption, which waits for a listbox option that never appears. Every
+    // dropdown on such a form was left empty: caught by the per-field catch, so
+    // it surfaced only as the employer's own "required field" validation error.
+    const native = page.locator(`select[id="${field.id}"], select[name="${field.id}"]`).first();
+    if ((await native.count()) > 0) {
+      await native.selectOption({ label: value }).catch(() => native.selectOption(value));
+      await humanPause();
+      return;
+    }
     const combo = await resolveControl(page, field.id);
     await pickComboOption(page, combo, value);
     return;

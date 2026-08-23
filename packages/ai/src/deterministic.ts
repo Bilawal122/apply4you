@@ -29,6 +29,18 @@ const NOT_THE_CANDIDATE =
  */
 const A_PREFERENCE_NOT_A_FACT = /\b(prefer(red|ence)?|desired|willing|relocat\w*|office)\b/i;
 
+/**
+ * Questions scoped by a condition the profile cannot confirm.
+ *
+ * Found on a real Stripe form: "If located in the US, in what city and state do
+ * you reside?" matched the location pattern and answered "Bolton, Greater
+ * Manchester, United Kingdom" — a UK address supplied to a question that only
+ * applies to US residents, stamped `answer_sources = "profile"`. The value was
+ * true; the answer was wrong. Only a reader who understands the condition can
+ * decide these, so they go to the LLM or the human.
+ */
+const CONDITIONAL = /(^|[\s(])if\b|\bif\s+(you|located|based|applicable|residing|resident|not)\b/i;
+
 const MATCHERS: Array<{ pattern: RegExp; exclude?: RegExp; extract: Extractor }> = [
   { pattern: /\b(first[\s_-]?name|given[\s_-]?name)\b/i, extract: (p) => val(p.firstName) },
   { pattern: /\b(last[\s_-]?name|family[\s_-]?name|surname)\b/i, extract: (p) => val(p.lastName) },
@@ -69,7 +81,12 @@ export function resolveDeterministic(
 
     // No match, or the label is about someone else / about a preference: hand
     // it on rather than guessing. FR-14 — silence beats a confident mistake.
-    if (!matcher || NOT_THE_CANDIDATE.test(haystack) || matcher.exclude?.test(haystack)) {
+    if (
+      !matcher ||
+      NOT_THE_CANDIDATE.test(haystack) ||
+      CONDITIONAL.test(haystack) ||
+      matcher.exclude?.test(haystack)
+    ) {
       remaining.push(field);
       continue;
     }
