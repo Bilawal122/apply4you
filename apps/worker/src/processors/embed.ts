@@ -1,6 +1,6 @@
 import { Worker, type Job } from "bullmq";
 import { QUEUES } from "@apply4you/shared";
-import { deriveSummary, embedJob, embedProfile, jobEmbeddingText, profileEmbeddingText } from "@apply4you/ai";
+import { deriveSummary, embedJob, embedProfile, jobEmbeddingText, profileEmbeddingText, withUsageUser } from "@apply4you/ai";
 import { queues, workerConnection } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
 import { loadProfileAndPrefs } from "../profile-data.js";
@@ -39,6 +39,13 @@ async function embedOneJob(jobId: string): Promise<void> {
 }
 
 async function embedOneProfile(userId: string): Promise<void> {
+  // Everything below is this user's cost. embedOneJob deliberately stays
+  // outside any context: a job embedding is shared infrastructure, not
+  // attributable to whoever happened to trigger the poll.
+  return withUsageUser(userId, () => embedOneProfileFor(userId));
+}
+
+async function embedOneProfileFor(userId: string): Promise<void> {
   const db = supabaseAdmin();
   const { profile, preferences } = await loadProfileAndPrefs(userId);
 

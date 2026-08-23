@@ -1,6 +1,6 @@
 import { Worker, type Job } from "bullmq";
 import { QUEUES } from "@apply4you/shared";
-import { generateMatchReasons } from "@apply4you/ai";
+import { generateMatchReasons, withUsageUser } from "@apply4you/ai";
 import { queues, workerConnection } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
 import { loadProfileAndPrefs } from "../profile-data.js";
@@ -54,12 +54,14 @@ async function matchUser(userId: string): Promise<void> {
   const top = scored.slice(0, REASONS_FOR_TOP);
   let reasons = new Map<string, string>();
   try {
-    reasons = await generateMatchReasons(
-      profile,
-      top.flatMap(({ jobId }: { jobId: string }) => {
-        const j = jobById.get(jobId);
-        return j ? [{ jobId: j.id, title: j.title, company: j.company, descriptionSnippet: j.description ?? "" }] : [];
-      }),
+    reasons = await withUsageUser(userId, () =>
+      generateMatchReasons(
+        profile,
+        top.flatMap(({ jobId }: { jobId: string }) => {
+          const j = jobById.get(jobId);
+          return j ? [{ jobId: j.id, title: j.title, company: j.company, descriptionSnippet: j.description ?? "" }] : [];
+        }),
+      ),
     );
   } catch (err) {
     console.warn(`[matching] reasons failed for ${userId}: ${String(err)}`);

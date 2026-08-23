@@ -21,6 +21,7 @@ export function ensureUsageSink(): void {
         output_tokens: e.outputTokens,
         cached_tokens: e.cachedTokens,
         estimated_cost_usd: e.estimatedCostUsd,
+        user_id: e.userId ?? null,
       })
       .then(({ error }) => {
         if (error) console.warn(`[ai_usage] insert failed: ${error.message}`);
