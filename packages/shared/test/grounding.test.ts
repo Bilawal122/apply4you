@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isWorkAuthorizationField, looksLikeRefusal, groundAnswer } from "../src/grounding.js";
+import { isWorkAuthorizationField, looksLikeRefusal, groundAnswer, ungroundedNumbers } from "../src/grounding.js";
 import type { Field } from "../src/schemas/field.js";
 import type { Profile } from "../src/schemas/profile.js";
 
@@ -106,5 +106,74 @@ describe("looksLikeRefusal", () => {
   it("nulls refusal prose through groundAnswer even with a grounded profile", () => {
     const f = field("q", "What's your preferred approach to state management?", "textarea");
     expect(groundAnswer(profile("British citizen"), f, "The profile does not contain information about that.")).toBeNull();
+  });
+});
+
+describe("ungroundedNumbers — the free-text backstop", () => {
+  const p = profile("");
+  const withNumbers = {
+    ...profile(""),
+    workHistory: [{ company: "Acme", title: "Engineer", start: "2021-03", end: "present",
+      bullets: ["Cut p95 latency 40%", "Mentored 3 engineers"] }],
+    skills: ["TypeScript"],
+  } as Profile;
+
+  it("passes a figure the profile actually states", () => {
+    expect(ungroundedNumbers("I cut p95 latency by 40%.", withNumbers)).toEqual([]);
+  });
+
+  it("catches an invented percentage", () => {
+    expect(ungroundedNumbers("I cut costs by 65%.", withNumbers)).toEqual(["65%"]);
+  });
+
+  it("catches an invented headcount and an invented scale", () => {
+    const out = ungroundedNumbers("I led 12 engineers and scaled to 250,000 users.", withNumbers);
+    expect(out).toContain("12");
+    expect(out).toContain("250,000");
+  });
+
+  it("ignores single digits — not metric claims", () => {
+    expect(ungroundedNumbers("I worked across 3 teams on 4 services.", p)).toEqual([]);
+  });
+
+  it("ignores number words entirely", () => {
+    expect(ungroundedNumbers("Two years across three projects.", p)).toEqual([]);
+  });
+
+  it("ignores bare years — flagging one costs a whole letter", () => {
+    expect(ungroundedNumbers("I shipped in 2024 and joined in 1998.", p)).toEqual([]);
+  });
+
+  it("still catches a percentage that happens to look like a year", () => {
+    expect(ungroundedNumbers("Throughput rose 2024%.", p)).toEqual(["2024%"]);
+  });
+
+  it("matches digits inside profile dates, so real dates pass", () => {
+    expect(ungroundedNumbers("Since 03/2021 I have owned the billing pipeline.", withNumbers)).toEqual([]);
+  });
+});
+
+describe("groundAnswer — number fields must be grounded", () => {
+  const withNumbers = {
+    ...profile("British citizen"),
+    workHistory: [{ company: "Acme", title: "Engineer", start: "2021-03", end: "present", bullets: ["Cut latency 40%"] }],
+  } as Profile;
+  const numField = { id: "yrs", label: "How many years of React experience?", type: "number", required: true } as Field;
+
+  it("nulls an invented figure", () => {
+    expect(groundAnswer(withNumbers, numField, "15")).toBeNull();
+  });
+
+  it("allows a figure the profile states", () => {
+    expect(groundAnswer(withNumbers, numField, "40")).toBe("40");
+  });
+
+  it("leaves single digits alone — too common to police", () => {
+    expect(groundAnswer(withNumbers, numField, "3")).toBe("3");
+  });
+
+  it("does not touch non-number fields", () => {
+    const text = { id: "q", label: "Why this role?", type: "textarea", required: false } as Field;
+    expect(groundAnswer(withNumbers, text, "I scaled it to 250,000 users.")).toBe("I scaled it to 250,000 users.");
   });
 });

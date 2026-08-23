@@ -1,4 +1,4 @@
-import { BANNED_PHRASES, type Profile } from "@apply4you/shared";
+import { BANNED_PHRASES, ungroundedNumbers, type Profile } from "@apply4you/shared";
 import { gemini, MODELS, withRetry, logUsage } from "../client.js";
 
 /**
@@ -15,12 +15,19 @@ export interface CoverLetterInput {
 
 const PLACEHOLDER_RE = /\[[^\]]{2,40}\]|\{[^}]{2,40}\}/;
 
-function violations(text: string): string[] {
+function violations(text: string, profile: Profile): string[] {
   const found: string[] = [];
   for (const phrase of BANNED_PHRASES) {
     if (text.toLowerCase().includes(phrase.toLowerCase())) found.push(`banned phrase: "${phrase}"`);
   }
   if (PLACEHOLDER_RE.test(text)) found.push("contains a [placeholder]");
+  // The prompt asks for "numbers where the profile has them", which is exactly
+  // the instruction most likely to produce an impressive number the profile
+  // does not have. Style and format were checked; the claims were not.
+  const invented = ungroundedNumbers(text, profile);
+  if (invented.length > 0) {
+    found.push(`figures not present in the profile: ${invented.join(", ")} — use only numbers the profile states, or none`);
+  }
   return found;
 }
 
@@ -65,7 +72,7 @@ export async function generateCoverLetter(input: CoverLetterInput): Promise<{ te
     let text = (response.text ?? "").trim();
     if (input.maxLength && text.length > input.maxLength) text = text.slice(0, input.maxLength);
 
-    const found = violations(text);
+    const found = violations(text, input.profile);
     // Guard the floor too: a 3-line letter is a failure even if it breaks no rules.
     if (found.length === 0 && text.length > 700) return { text, ok: true };
     lastViolations = found.length ? found : ["letter was far too short — write the full structure asked for"];

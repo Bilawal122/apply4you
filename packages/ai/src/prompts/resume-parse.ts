@@ -75,6 +75,12 @@ const INSTRUCTIONS = `Extract the candidate's information from this resume.
 Rules:
 - Extract ONLY what appears in the resume. Never infer or invent anything.
 - Omit any property that is absent from the resume (do not output empty guesses).
+- EXCEPTION, and it matters: inside projects and education every property is
+  structurally required, so you cannot omit one. When the resume does not state
+  it, return an EMPTY STRING — never a plausible-looking value. A project with
+  no link has url "", not a guessed GitHub URL; a course with no dates has
+  start "" and end "". An invented URL or date is a fabrication in the one
+  place this system cannot detect it later.
 - Normalize dates to ISO format (YYYY-MM). Use "present" as the end value for current roles.
 - links: full URLs when present.
 - workAuthorization: only if explicitly stated (e.g. "US citizen", "requires sponsorship").

@@ -120,7 +120,12 @@ async function openComboMenu(page: Page, control: Locator): Promise<boolean> {
  * the option mid-click, which is the classic combobox-fill failure.
  */
 export async function pickComboOption(page: Page, control: Locator, optionText: string): Promise<void> {
-  await control.scrollIntoViewIfNeeded();
+  // Bounded like every other control wait in this file. Unbounded, this took
+  // Playwright's 30s default for a combobox that is in the form schema but
+  // never renders — the exact shape of the Workable timeout that killed a real
+  // application, and slow enough that several such fields push a submission
+  // past its queue window.
+  await control.scrollIntoViewIfNeeded({ timeout: CONTROL_TIMEOUT_MS });
   await openComboMenu(page, control);
   await humanPause(150, 350);
 

@@ -3,12 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { LIBRARY_QUESTIONS, ProfileSchema, PreferencesSchema } from "@apply4you/shared";
-import { deriveSummary } from "@apply4you/ai";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { profileToRow, preferencesToRow } from "@/lib/profile";
 import { enqueueProfileEmbedding, enqueueResolve } from "@/lib/queue";
-import { ensureUsageSink } from "@/lib/ai-usage";
 
 export type SaveState = { error: string } | { ok: true } | null;
 
@@ -26,15 +24,19 @@ export async function saveProfile(_prev: SaveState, formData: FormData): Promise
     return { error: "Invalid profile data" };
   }
 
-  // FR-4: derive the reusable summary once — only when missing or explicitly refreshed.
-  if (!profile.summary.trim()) {
-    try {
-      ensureUsageSink();
-      profile.summary = await deriveSummary(profile);
-    } catch {
-      // Summary derivation is best-effort; profile save must not fail on it.
-    }
-  }
+  // FR-4's summary is derived by the worker, NOT here.
+  //
+  // This used to await deriveSummary() inline. That is a gemini-2.5-flash call
+  // wrapped in withRetry(attempts = 3) with no timeout, and flash routinely
+  // takes 12-20s — while a Server Action gets the platform's default function
+  // limit (10s on Vercel Hobby) because, unlike /api/profile/parse, it cannot
+  // declare its own maxDuration. So the function was killed mid-call: the
+  // action never returned, useActionState never resolved, the button sat on
+  // "Saving…" forever and the redirect never fired. The try/catch could not
+  // help — a platform timeout is not an exception.
+  //
+  // The enqueue below already chains embed-profile -> match-user, and the
+  // worker derives the summary there, where a 20s call is unremarkable.
 
   const { error } = await supabase
     .from("profiles")
