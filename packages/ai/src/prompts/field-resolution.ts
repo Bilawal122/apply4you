@@ -1,5 +1,6 @@
 import { Type, type Schema } from "@google/genai";
 import type { Field, Profile, ResolvedValues } from "@apply4you/shared";
+import { groundAnswer } from "@apply4you/shared";
 import { gemini, MODELS, withRetry, logUsage } from "../client.js";
 
 /**
@@ -131,7 +132,12 @@ export async function resolveFieldsWithLlm(ctx: ResolutionContext, fields: Field
   for (const answer of parsed.answers) {
     const field = fields[answer.i];
     if (!field) continue;
-    resolved[field.id] = postValidate(field, answer.value);
+    // postValidate canonicalizes against the live option list; groundAnswer is
+    // the structural backstop for the two classes it cannot judge — right-to-work
+    // claims with no profile fact behind them, and refusal prose written into
+    // the answer box. Both were previously guarded by prompt wording alone, and
+    // both reached real packets.
+    resolved[field.id] = groundAnswer(ctx.profile, field, postValidate(field, answer.value));
   }
   return resolved;
 }

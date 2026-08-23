@@ -43,7 +43,14 @@ export async function enqueueProfileEmbedding(userId: string): Promise<void> {
 }
 
 export async function enqueueResolve(applicationId: string): Promise<void> {
-  await queue(QUEUES.resolve).add("resolve-application", { applicationId }, { jobId: `resolve-${applicationId}` });
+  // Resolution is safe to retry — it only reads the form and writes a draft.
+  // Submission is NOT, and deliberately keeps BullMQ's single-attempt default:
+  // a timed-out submit click may still have reached the employer.
+  await queue(QUEUES.resolve).add(
+    "resolve-application",
+    { applicationId },
+    { jobId: `resolve-${applicationId}`, attempts: 3, backoff: { type: "exponential", delay: 5_000 } },
+  );
 }
 
 export async function enqueueSubmit(atsType: string, applicationId: string): Promise<void> {

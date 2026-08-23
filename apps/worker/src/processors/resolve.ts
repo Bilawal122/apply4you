@@ -2,6 +2,7 @@ import { Worker, type Job } from "bullmq";
 import {
   QUEUES,
   isDemographicField,
+  isExcludedFromResolution,
   FILLABLE_FIELD_TYPES,
   resolveFromLibrary,
   type Field,
@@ -16,16 +17,6 @@ import { supabaseAdmin } from "../supabase.js";
 import { loadProfileAndPrefs } from "../profile-data.js";
 
 type ResolveData = { applicationId: string };
-
-/** Fields that are filled mechanically or never answered — excluded from resolution. */
-function isExcluded(field: Field): boolean {
-  if (field.type === "file") return true; // resume upload handled at fill time
-  if (field.id === "resume_text") return true; // Greenhouse paste-resume textarea
-  // EEOC/demographic/special-category: never auto-filled (DECISIONS.md D3).
-  if (isDemographicField(field.id, field.label)) return true;
-  return false;
-}
-
 
 function isCoverLetterField(field: Field): boolean {
   return field.type === "textarea" && /cover.?letter/i.test(`${field.id} ${field.label}`);
@@ -79,7 +70,7 @@ export async function resolveApplication(applicationId: string): Promise<void> {
   const formSchema = await adapter.readForm(jobRef);
 
   // 2. Partition: excluded / cover letter / resolvable.
-  const workable = formSchema.filter((f) => !isExcluded(f));
+  const workable = formSchema.filter((f) => !isExcludedFromResolution(f));
   const coverLetterField = workable.find(isCoverLetterField);
   const resolvable = workable.filter((f) => !isCoverLetterField(f));
 
@@ -195,7 +186,14 @@ export function startResolveWorker(): Worker {
       try {
         await resolveApplication(applicationId);
       } catch (err) {
-        if (job.attemptsMade >= 2) {
+        // Fire on the LAST attempt, whatever `attempts` is set to. This was
+        // `job.attemptsMade >= 2`, which assumed attempts:3 — but no producer
+        // set `attempts` at all, BullMQ defaults it to 0/1, and attemptsMade is
+        // 0 on the only run. The guard was never true, so a failed resolve
+        // wrote no failure_reason, emitted no event, and left the application
+        // in `draft` — indistinguishable from one still being worked on.
+        const maxAttempts = Math.max(1, job.opts?.attempts ?? 1);
+        if (job.attemptsMade >= maxAttempts - 1) {
           // Final attempt: surface the failure on the application.
           const db = supabaseAdmin();
           const { data: app } = await db

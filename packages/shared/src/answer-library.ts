@@ -25,6 +25,19 @@ export interface LibraryQuestion {
   kind: AnswerKind;
   choices?: string[];
   /**
+   * Answering this is not optional in practice.
+   *
+   * Everything in the library is optional by design — a blank simply parks the
+   * field for review. These two are different: almost every employer form asks
+   * them, they are always `required`, and nothing in a CV can answer them. Left
+   * blank, every application parks on a required field. Worse, before the
+   * grounding gate in @apply4you/shared/grounding, the model answered them
+   * anyway — inventing the candidate's immigration status on nine real packets.
+   *
+   * So they stay optional, and the UI stops pretending they are incidental.
+   */
+  essential?: boolean;
+  /**
    * Patterns matched against an ATS field's id + label. Deliberately narrow —
    * a wrong match puts the wrong answer in front of an employer, which is
    * worse than leaving the field for the human.
@@ -65,6 +78,7 @@ export const LIBRARY_QUESTIONS: LibraryQuestion[] = [
   },
   {
     key: "visa_sponsorship",
+    essential: true,
     label: "Will you require visa sponsorship?",
     help: "Answer for the countries you're applying in. Employers ask this constantly and a CV never says it.",
     kind: "choice",
@@ -73,6 +87,7 @@ export const LIBRARY_QUESTIONS: LibraryQuestion[] = [
   },
   {
     key: "work_authorization",
+    essential: true,
     label: "Are you legally authorised to work where you're applying?",
     help: "The counterpart to the sponsorship question — most forms ask both.",
     kind: "choice",

@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The image ships a browser; never let npm postinstall re-download one.
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+
+jobs:
+  check:
+    name: build · typecheck · lint · test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # `build` first: packages resolve each other through built dist/, so
+      # typecheck and test both depend on it (turbo encodes this, but running
+      # it explicitly makes a build break read as a build break).
+      - run: pnpm build
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm test
+
+  submit-machinery:
+    name: submit machinery (mock ATS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: Install Chromium
+        run: pnpm --filter @apply4you/worker exec playwright install --with-deps chromium
+
+      # Drives the real adapters against a local high-fidelity mock of a
+      # Greenhouse form: fill fidelity, both confirmation branches, form_error,
+      # confirmation_timeout, captcha blocking, the v3-badge false-positive
+      # guard, and the file-throw abort. No real ATS is contacted.
+      - name: Mock submission suite
+        run: pnpm --filter @apply4you/worker exec tsx src/scripts/test-submit-mock.ts
+
+      # Asserts the no-fabrication guarantee of the tailored CV against a
+      # deliberately adversarial selection, then renders a real PDF.
+      - name: Tailored CV guarantees
+        run: pnpm --filter @apply4you/worker exec tsx src/scripts/verify-tailored-cv.ts

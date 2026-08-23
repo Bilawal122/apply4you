@@ -48,15 +48,21 @@ function isCoverLetterField(f: Field): boolean {
 /*
  * The provenance ledger on the dark panel. Every row is a tally of the labels
  * already shown against the answers themselves — it never introduces a source
- * the rows don't carry, and "Made up" is a real zero rather than a boast: the
- * resolver stores null when it can't ground an answer (FR-14/15), so an
- * unattributed value has nowhere to come from.
+ * the rows don't carry.
+ *
+ * "Source not recorded" is a row rather than a silent omission. The ledger used
+ * to assume an unattributed value had nowhere to come from, because the
+ * resolver stores null when it can't ground an answer (FR-14/15) — but packets
+ * resolved before answer_sources existed carry values with no author on record,
+ * and the UI was quietly filing them under "From your profile". Every row here
+ * must sum to the question count, including the uncomfortable one.
  */
 const PROVENANCE_ROWS: Array<{ key: Source; label: string; tone: string }> = [
   { key: "profile", label: "From your profile", tone: "text-on-slate" },
   { key: "library", label: "Your saved answers", tone: "text-on-slate" },
   { key: "you", label: "You wrote", tone: "text-on-slate" },
   { key: "ai", label: "Drafted by AI", tone: "text-on-slate" },
+  { key: "unrecorded", label: "Source not recorded", tone: "text-attention-bright" },
   { key: "unknown", label: "We didn't guess", tone: "text-attention-bright" },
 ];
 
@@ -256,7 +262,13 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
     if (!value) return "unknown";
     const recorded = app.answerSources[id];
     if (recorded === "ai" || recorded === "library" || recorded === "profile") return recorded;
-    return "profile";
+    // No record ⇒ say so. This used to fall back to "profile", which meant a
+    // value the machine invented wore the badge that means "this came from your
+    // CV" — most confidently on the answers that most needed scrutiny. Resolve
+    // has written answer_sources for a while now, so in practice this is the
+    // pre-answer_sources packets; either way, an absent record is not evidence
+    // of authorship.
+    return "unrecorded";
   };
 
   /*
@@ -270,7 +282,7 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
     editableFields.filter((f) => String(values[f.id] ?? "").trim()).length +
     (hasCoverLetter && coverLetter.trim() ? 1 : 0);
 
-  const tally: Record<Source, number> = { profile: 0, library: 0, ai: 0, you: 0, unknown: 0 };
+  const tally: Record<Source, number> = { profile: 0, library: 0, ai: 0, you: 0, unknown: 0, unrecorded: 0 };
   for (const field of editableFields) tally[sourceOf(field.id, values[field.id] ?? "")] += 1;
   if (hasCoverLetter) {
     // An empty letter is a gap, not an AI draft — count it as one.

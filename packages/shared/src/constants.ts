@@ -99,6 +99,27 @@ export function isDemographicField(id: string, label: string): boolean {
 }
 
 /**
+ * Fields resolution never writes a value for.
+ *
+ * This MUST be the only definition. It used to exist only inside the worker's
+ * resolver while the web save action carried its own narrower copy (files
+ * only), and the two disagreeing was a P0: Greenhouse's Resume question emits
+ * BOTH `{id:"resume", type:"file"}` and `{id:"resume_text", type:"textarea"}`
+ * and copies `required:true` onto both. The resolver skipped `resume_text`;
+ * the save action counted it as an unanswered required field, flipped the
+ * application to `needs_review`, and approval then refused with "answer the
+ * required fields first" — for a field the review UI deliberately hides. The
+ * application could never be approved and the header still read "ready to
+ * send". Both callers now share this predicate.
+ */
+export function isExcludedFromResolution(field: { id: string; label: string; type: string }): boolean {
+  if (field.type === "file") return true; // the upload is handled at fill time
+  if (field.id === "resume_text") return true; // Greenhouse paste-resume textarea
+  // EEOC/demographic/special-category: never auto-filled (DECISIONS.md D3).
+  return isDemographicField(field.id, field.label);
+}
+
+/**
  * Field types the fill layer can reliably drive on a live form. A REQUIRED
  * field outside this set can never be auto-submitted — approval must refuse
  * it rather than let the submission fail on the employer's validation.

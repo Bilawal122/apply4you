@@ -337,6 +337,38 @@ async function main(): Promise<void> {
     check("v3 badge is NOT a block", block === null, String(block));
   }
 
+  // 7. Regression (TESTING.md T0-2): a throwing resume upload must not abort
+  //    the fill. Greenhouse opened its per-field try AFTER the file branch, so
+  //    a single unreadable resume escaped the loop and left every remaining
+  //    field empty — on the one ATS cleared for real submissions.
+  console.log("\n--- scenario: resume upload throws mid-fill ---");
+  {
+    const missing: LocalFile = { path: join(dir, "vanished.pdf"), filename: "vanished.pdf", mimeType: "application/pdf" };
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(`${BASE}/form?mode=inline`, { waitUntil: "domcontentloaded" });
+
+    let threw: string | null = null;
+    try {
+      await adapter.fillForm(page, FIELDS, VALUES, missing);
+    } catch (err) {
+      threw = String(err).slice(0, 100);
+    }
+    check("fillForm survives an unreadable resume", threw === null, threw ?? "");
+
+    const r7 = await adapter.submit(page);
+    const p7 = lastPost["inline"];
+    check(
+      "every non-file field still posted after the file throw",
+      p7?.fields["first_name"] === "Test" &&
+        p7?.fields["last_name"] === "Candidate" &&
+        p7?.fields["email"] === "test.candidate@example.com" &&
+        p7?.fields["question_auth"] === "Yes",
+      JSON.stringify(p7?.fields),
+    );
+    check("submission still completes", r7?.outcome === "submitted", JSON.stringify(r7));
+  }
+
   await browser.close();
   close();
 

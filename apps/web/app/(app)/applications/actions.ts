@@ -5,6 +5,7 @@ import {
   PLANS,
   FILLABLE_FIELD_TYPES,
   isDemographicField,
+  isExcludedFromResolution,
   ReviewMetricsSchema,
   type ReviewMetrics,
   currentUsagePeriod,
@@ -49,8 +50,11 @@ export async function saveApplicationFields(
     if (knownIds.has(id)) merged[id] = value === "" ? null : value;
   }
 
+  // Same predicate the resolver uses (@apply4you/shared). Anything resolution
+  // deliberately skips must not be counted as an unanswered required field
+  // here, or the application becomes permanently unapprovable.
   const unresolved: UnresolvedField[] = schema
-    .filter((f) => f.type !== "file" && (merged[f.id] ?? null) === null)
+    .filter((f) => !isExcludedFromResolution(f) && (merged[f.id] ?? null) === null)
     .map((f) => ({ id: f.id, label: f.label, required: f.required }));
   const status = unresolved.some((u) => u.required) ? "needs_review" : "draft";
 
@@ -58,7 +62,10 @@ export async function saveApplicationFields(
     .from("applications")
     .update({
       resolved_fields: merged,
-      cover_letter: coverLetter ?? undefined,
+      // Never `?? undefined`: supabase-js drops undefined keys, so a cleared
+      // letter kept the old text while the action still reported "Saved" — the
+      // employer then received prose the user had explicitly deleted.
+      cover_letter: coverLetter?.trim() ? coverLetter : null,
       unresolved_fields: unresolved,
       status,
     })
