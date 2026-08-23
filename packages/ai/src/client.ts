@@ -71,12 +71,38 @@ export function logUsage(operation: string, model: string, usage: UsageMetadata 
   }
 }
 
-/** Retry with exponential backoff on 429/5xx. */
+/**
+ * Hard ceiling on a single model call.
+ *
+ * The SDK has no default timeout, so a stalled request hangs forever and takes
+ * its caller with it. That is how a profile save died: a flash call inside a
+ * Server Action outlived the platform's function limit, and the user got a
+ * button stuck on "Saving…". A worker job would hang just as silently.
+ *
+ * Generous enough that a normal flash call (12-20s observed) never trips it.
+ */
+export const CALL_TIMEOUT_MS = 45_000;
+
+export async function withTimeout<T>(fn: () => Promise<T>, ms = CALL_TIMEOUT_MS): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      fn(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`model call exceeded ${ms}ms`)), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/** Retry with exponential backoff on 429/5xx. Each attempt is time-bounded. */
 export async function withRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
   let lastError: unknown;
   for (let i = 0; i < attempts; i++) {
     try {
-      return await fn();
+      return await withTimeout(fn);
     } catch (err) {
       lastError = err;
       const message = err instanceof Error ? err.message : String(err);

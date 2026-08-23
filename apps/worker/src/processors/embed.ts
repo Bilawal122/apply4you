@@ -1,6 +1,6 @@
 import { Worker, type Job } from "bullmq";
 import { QUEUES } from "@apply4you/shared";
-import { embedJob, embedProfile, jobEmbeddingText, profileEmbeddingText } from "@apply4you/ai";
+import { deriveSummary, embedJob, embedProfile, jobEmbeddingText, profileEmbeddingText } from "@apply4you/ai";
 import { queues, workerConnection } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
 import { loadProfileAndPrefs } from "../profile-data.js";
@@ -42,11 +42,23 @@ async function embedOneProfile(userId: string): Promise<void> {
   const db = supabaseAdmin();
   const { profile, preferences } = await loadProfileAndPrefs(userId);
 
+  // FR-4: the summary is derived here rather than in the web save action. The
+  // action runs inside a Server Action's function limit, which a flash call
+  // reliably exceeds; this worker has no such ceiling and is already holding
+  // the profile. Best-effort — a summary must never cost the user their
+  // embedding, and therefore their matches.
+  const update: Record<string, unknown> = {};
+  if (!profile.summary.trim()) {
+    try {
+      update.summary = await deriveSummary(profile);
+    } catch (err) {
+      console.error(`[embed-profile] ${userId}: summary failed (continuing):`, String(err).slice(0, 160));
+    }
+  }
+
   const vector = await embedProfile(profileEmbeddingText(profile, preferences));
-  const { error } = await db
-    .from("profiles")
-    .update({ embedding: JSON.stringify(vector) })
-    .eq("user_id", userId);
+  update.embedding = JSON.stringify(vector);
+  const { error } = await db.from("profiles").update(update).eq("user_id", userId);
   if (error) throw new Error(`profile embedding update failed: ${error.message}`);
 
   // A fresh profile embedding invalidates the match set.

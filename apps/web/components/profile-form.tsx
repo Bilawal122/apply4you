@@ -4,6 +4,15 @@ import { useActionState, useState } from "react";
 import type { Profile, WorkHistoryEntry, EducationEntry, ProjectEntry } from "@apply4you/shared";
 import { saveProfile, type SaveState } from "@/app/(app)/actions";
 import { Spinner, btnPrimary, btnSecondarySm, inputCls, insetCls, labelCls } from "@/components/ui";
+import { SelectWithOther, SuggestInput } from "@/components/form-fields";
+import {
+  DEGREE_OPTIONS,
+  FIELD_OF_STUDY_OPTIONS,
+  INSTITUTION_SUGGESTIONS,
+  JOB_TITLE_SUGGESTIONS,
+  SKILL_SUGGESTIONS,
+  WORK_AUTHORIZATION_OPTIONS,
+} from "@apply4you/shared";
 
 const emptyJob: WorkHistoryEntry = { company: "", title: "", start: "", end: "present", bullets: [] };
 const emptyEdu: EducationEntry = { school: "", degree: "", field: "", start: "", end: "" };
@@ -33,6 +42,7 @@ export function ProfileForm({
   redirectTo?: string;
 }) {
   const [profile, setProfile] = useState<Profile>(initial);
+  const [skillDraft, setSkillDraft] = useState("");
   const [state, action, pending] = useActionState<SaveState, FormData>(saveProfile, null);
 
   const set = <K extends keyof Profile>(key: K, value: Profile[K]) =>
@@ -49,6 +59,15 @@ export function ProfileForm({
       "projects",
       profile.projects.map((pr, idx) => (idx === i ? { ...pr, ...patch } : pr)),
     );
+
+  const addSkill = (raw: string) => {
+    const value = raw.trim().replace(/,$/, "").trim();
+    if (!value) return;
+    setSkillDraft("");
+    // Case-insensitive dedupe: "excel" and "Excel" are one skill to an employer.
+    if (profile.skills.some((s) => s.toLowerCase() === value.toLowerCase())) return;
+    set("skills", [...profile.skills, value]);
+  };
 
   const setEdu = (i: number, patch: Partial<EducationEntry>) =>
     set(
@@ -82,25 +101,27 @@ export function ProfileForm({
           <label className={labelCls}>Location</label>
           <input
             className={inputCls}
-            placeholder="City, State"
+            placeholder="Town or city"
             value={profile.location}
             onChange={(e) => set("location", e.target.value)}
           />
         </div>
-        <div>
-          <label className={labelCls}>Work authorization</label>
-          <input
-            className={inputCls}
-            placeholder='e.g. "US citizen", "H-1B, needs sponsorship"'
+        <div className="sm:col-span-2">
+          <SelectWithOther
+            id="work-auth"
+            label="Right to work"
+            help="Employers ask this on almost every application, and it is always required. We never answer it for you — so until it is set here, every form that asks comes back to you before it can be sent."
+            options={WORK_AUTHORIZATION_OPTIONS}
             value={profile.workAuthorization}
-            onChange={(e) => set("workAuthorization", e.target.value)}
+            onChange={(v) => set("workAuthorization", v)}
+            placeholder="Describe your right to work in your own words"
           />
         </div>
       </section>
 
       <section className={`grid grid-cols-1 gap-4 sm:grid-cols-3 ${ruledSection}`}>
         <div>
-          <label className={labelCls}>LinkedIn URL</label>
+          <label className={labelCls}>LinkedIn URL (optional)</label>
           <input
             className={inputCls}
             value={profile.links.linkedin ?? ""}
@@ -108,7 +129,7 @@ export function ProfileForm({
           />
         </div>
         <div>
-          <label className={labelCls}>GitHub URL</label>
+          <label className={labelCls}>GitHub URL (optional)</label>
           <input
             className={inputCls}
             value={profile.links.github ?? ""}
@@ -116,7 +137,7 @@ export function ProfileForm({
           />
         </div>
         <div>
-          <label className={labelCls}>Portfolio URL</label>
+          <label className={labelCls}>Portfolio or website (optional)</label>
           <input
             className={inputCls}
             value={profile.links.portfolio ?? ""}
@@ -141,7 +162,13 @@ export function ProfileForm({
             <div key={i} className={entryCls}>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <input className={inputCls} placeholder="Company" value={job.company} onChange={(e) => setJob(i, { company: e.target.value })} />
-                <input className={inputCls} placeholder="Title" value={job.title} onChange={(e) => setJob(i, { title: e.target.value })} />
+                <SuggestInput
+                  id={`job-title-${i}`}
+                  options={JOB_TITLE_SUGGESTIONS}
+                  placeholder="Job title"
+                  value={job.title}
+                  onChange={(e) => setJob(i, { title: e.target.value })}
+                />
                 <input className={inputCls} placeholder="Start (YYYY-MM)" value={job.start} onChange={(e) => setJob(i, { start: e.target.value })} />
                 <input className={inputCls} placeholder='End (YYYY-MM or "present")' value={job.end} onChange={(e) => setJob(i, { end: e.target.value })} />
               </div>
@@ -167,9 +194,11 @@ export function ProfileForm({
       <section className={ruledSection}>
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="label-mono">Projects</h2>
+            <h2 className="label-mono">Projects & experience</h2>
             <p className="mt-1.5 text-[13px] leading-[1.5] text-ink-soft">
-              Side projects, open source, portfolio work. Often the strongest evidence you have.
+              Anything that shows what you can do and isn&apos;t a job: a dissertation, a
+              society you ran, volunteering, a mooting competition, a portfolio, a side
+              project. Often the strongest evidence a graduate has.
             </p>
           </div>
           <button
@@ -185,13 +214,18 @@ export function ProfileForm({
             <div key={i} className={entryCls}>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <input className={inputCls} placeholder="Project name" value={pr.name} onChange={(e) => setProject(i, { name: e.target.value })} />
-                <input className={inputCls} placeholder="Tech / stack" value={pr.tech} onChange={(e) => setProject(i, { tech: e.target.value })} />
+                <input
+                  className={inputCls}
+                  placeholder="Context (tools, subject, organisation)"
+                  value={pr.tech}
+                  onChange={(e) => setProject(i, { tech: e.target.value })}
+                />
               </div>
               <input className={`${inputCls} mt-3`} placeholder="URL (optional)" value={pr.url} onChange={(e) => setProject(i, { url: e.target.value })} />
               <textarea
                 className={`${inputCls} mt-3`}
                 rows={3}
-                placeholder="What it does and what you built, one per line"
+                placeholder="What it was and what you did, one per line"
                 value={pr.bullets.join("\n")}
                 onChange={(e) => setProject(i, { bullets: e.target.value.split("\n").filter(Boolean) })}
               />
@@ -221,9 +255,27 @@ export function ProfileForm({
         <div className="flex flex-col gap-4">
           {profile.education.map((edu, i) => (
             <div key={i} className={`${entryCls} grid grid-cols-1 gap-3 sm:grid-cols-2`}>
-              <input className={inputCls} placeholder="School" value={edu.school} onChange={(e) => setEdu(i, { school: e.target.value })} />
-              <input className={inputCls} placeholder="Degree" value={edu.degree} onChange={(e) => setEdu(i, { degree: e.target.value })} />
-              <input className={inputCls} placeholder="Field of study" value={edu.field} onChange={(e) => setEdu(i, { field: e.target.value })} />
+              <SuggestInput
+                id={`edu-school-${i}`}
+                options={INSTITUTION_SUGGESTIONS}
+                placeholder="School, college or university"
+                value={edu.school}
+                onChange={(e) => setEdu(i, { school: e.target.value })}
+              />
+              <SuggestInput
+                id={`edu-degree-${i}`}
+                options={DEGREE_OPTIONS}
+                placeholder="Qualification (GCSEs, BTEC, LLB…)"
+                value={edu.degree}
+                onChange={(e) => setEdu(i, { degree: e.target.value })}
+              />
+              <SuggestInput
+                id={`edu-field-${i}`}
+                options={FIELD_OF_STUDY_OPTIONS}
+                placeholder="Subject"
+                value={edu.field}
+                onChange={(e) => setEdu(i, { field: e.target.value })}
+              />
               <div className="flex gap-2">
                 <input className={inputCls} placeholder="Start" value={edu.start} onChange={(e) => setEdu(i, { start: e.target.value })} />
                 <input className={inputCls} placeholder="End" value={edu.end} onChange={(e) => setEdu(i, { end: e.target.value })} />
@@ -241,12 +293,45 @@ export function ProfileForm({
       </section>
 
       <section className={ruledSection}>
-        <label className={labelCls}>Skills (comma-separated)</label>
-        <textarea
-          className={inputCls}
-          rows={2}
-          value={profile.skills.join(", ")}
-          onChange={(e) => set("skills", e.target.value.split(",").map((s) => s.trim()).filter(Boolean))}
+        <label className={labelCls} htmlFor="skill-add">
+          Skills
+        </label>
+        <p className="mb-2.5 text-[13px] leading-[1.5] text-ink-soft">
+          Start typing and we&apos;ll suggest — customer service and de-escalation count
+          exactly as much as SQL. Press Enter to add, or type your own.
+        </p>
+        {profile.skills.length > 0 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {profile.skills.map((skill, i) => (
+              <span
+                key={`${skill}-${i}`}
+                className="inline-flex items-center gap-1.5 rounded-full bg-paper-tint px-3 py-1.5 text-[13.5px] text-ink"
+              >
+                {skill}
+                <button
+                  type="button"
+                  aria-label={`Remove ${skill}`}
+                  className="text-ink-faint transition-colors hover:text-danger focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger"
+                  onClick={() => set("skills", profile.skills.filter((_, idx) => idx !== i))}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <SuggestInput
+          id="skill-add"
+          options={SKILL_SUGGESTIONS.filter((o) => !profile.skills.includes(o))}
+          placeholder="Add a skill…"
+          value={skillDraft}
+          onChange={(e) => setSkillDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" && e.key !== ",") return;
+            e.preventDefault(); // never submit the whole form from this field
+            addSkill(skillDraft);
+          }}
+          onBlur={() => addSkill(skillDraft)}
         />
       </section>
 
@@ -267,7 +352,7 @@ export function ProfileForm({
         <textarea
           className={inputCls}
           rows={4}
-          placeholder="e.g. Looking to move from backend to full-stack. Available to start immediately. Prefer product-focused teams over pure infra."
+          placeholder="e.g. Graduating in June and available from July. Looking for a first role in employment law. Happy to relocate anywhere in the North West."
           value={profile.additionalInfo}
           onChange={(e) => set("additionalInfo", e.target.value)}
         />
