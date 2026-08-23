@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { parseResumePdf, parseResumeText } from "@apply4you/ai";
+import { parseResumePdf, parseResumeText, withUsageUser } from "@apply4you/ai";
 import { createClient } from "@/lib/supabase/server";
 import { ensureUsageSink } from "@/lib/ai-usage";
 
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
   let parsed;
   try {
     if (kind === "pdf") {
-      parsed = await parseResumePdf(bytes);
+      parsed = await withUsageUser(user.id, () => parseResumePdf(bytes));
     } else {
       const mammoth = await import("mammoth");
       const { value } = await mammoth.extractRawText({ buffer: Buffer.from(bytes) });

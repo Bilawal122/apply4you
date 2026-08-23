@@ -14,7 +14,7 @@ import {
   type ResolvedValues,
   type UnresolvedField,
 } from "@apply4you/shared";
-import { resolveFieldsWithLlm } from "@apply4you/ai";
+import { resolveFieldsWithLlm, withUsageUser } from "@apply4you/ai";
 import { createClient } from "@/lib/supabase/server";
 import { rowToProfile, type ProfileRow } from "@/lib/profile";
 import { ensureUsageSink } from "@/lib/ai-usage";
@@ -338,16 +338,18 @@ export async function fillFieldWithAi(
   await ensureUsageSink();
   let value: string | null = null;
   try {
-    const resolved = await resolveFieldsWithLlm(
-      {
-        profile: rowToProfile(profileRow),
-        job: {
-          title: app.jobs.title,
-          company: app.jobs.company,
-          description: app.jobs.description ?? "",
+    const resolved = await withUsageUser(user.id, () =>
+      resolveFieldsWithLlm(
+        {
+          profile: rowToProfile(profileRow),
+          job: {
+            title: app.jobs.title,
+            company: app.jobs.company,
+            description: app.jobs.description ?? "",
+          },
         },
-      },
-      [field],
+        [field],
+      ),
     );
     value = resolved[field.id] ?? null;
   } catch (err) {

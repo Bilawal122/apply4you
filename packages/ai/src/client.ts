@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { GoogleGenAI } from "@google/genai";
 
 export const MODELS = {
@@ -40,6 +41,30 @@ export interface UsageEvent {
   outputTokens: number;
   cachedTokens: number;
   estimatedCostUsd: number;
+  /** Who the call was made for. Null for genuinely user-less work (job embeds). */
+  userId?: string;
+}
+
+/**
+ * Who the current AI call is being made for.
+ *
+ * The usage sink is registered once per runtime and cannot know which user a
+ * call belongs to, so every one of the 23,901 ai_usage rows written before this
+ * had user_id NULL — which made D6's "cost per application (<$0.02 watch line)"
+ * measurable only in global aggregate, never per user or per application.
+ *
+ * AsyncLocalStorage rather than a parameter on every AI function: the call
+ * sites are processors and server actions that already know the user, while the
+ * ~10 functions in between (tailorCv, generateCoverLetter, resolveFieldsWithLlm,
+ * …) have no business taking a userId they only forward. It is also correct
+ * under concurrency, which a module-level "current user" would not be — the
+ * worker runs several jobs at once.
+ */
+const usageContext = new AsyncLocalStorage<{ userId: string }>();
+
+/** Attribute every AI call made inside `fn` to `userId`. */
+export function withUsageUser<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+  return usageContext.run({ userId }, fn);
 }
 
 type UsageSink = (event: UsageEvent) => void;
@@ -65,7 +90,15 @@ export function logUsage(operation: string, model: string, usage: UsageMetadata 
   const price = PRICING[model] ?? { input: 0, output: 0 };
   const estimatedCostUsd = (inputTokens / 1e6) * price.input + (outputTokens / 1e6) * price.output;
   try {
-    usageSink({ operation, model, inputTokens, outputTokens, cachedTokens, estimatedCostUsd });
+    usageSink({
+      operation,
+      model,
+      inputTokens,
+      outputTokens,
+      cachedTokens,
+      estimatedCostUsd,
+      userId: usageContext.getStore()?.userId,
+    });
   } catch {
     // Cost logging must never break an AI call.
   }

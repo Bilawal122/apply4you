@@ -11,7 +11,7 @@ import {
   type AtsType,
 } from "@apply4you/shared";
 import { getAdapter, type JobRef } from "@apply4you/ats";
-import { resolveDeterministic, resolveFieldsWithLlm, generateCoverLetter, tailorCv } from "@apply4you/ai";
+import { resolveDeterministic, resolveFieldsWithLlm, generateCoverLetter, tailorCv, withUsageUser } from "@apply4you/ai";
 import { workerConnection } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
 import { loadProfileAndPrefs } from "../profile-data.js";
@@ -87,9 +87,11 @@ export async function resolveApplication(applicationId: string): Promise<void> {
   const fromLibrary = resolveFromLibrary(remaining, answerLibrary);
   const stillOpen = remaining.filter((f) => !(f.id in fromLibrary));
 
-  const llmResolved = await resolveFieldsWithLlm(
-    { profile, job: { title: jobRow.title, company: jobRow.company, description: jobRow.description ?? "" } },
-    stillOpen,
+  const llmResolved = await withUsageUser(app.user_id, () =>
+    resolveFieldsWithLlm(
+      { profile, job: { title: jobRow.title, company: jobRow.company, description: jobRow.description ?? "" } },
+      stillOpen,
+    ),
   );
   const resolvedFields: ResolvedValues = { ...deterministic, ...fromLibrary, ...llmResolved };
 
@@ -102,11 +104,13 @@ export async function resolveApplication(applicationId: string): Promise<void> {
   // 4. Cover letter (FR-17), only when the form asks for one.
   let coverLetter = "";
   if (coverLetterField) {
-    const result = await generateCoverLetter({
-      profile,
-      job: { title: jobRow.title, company: jobRow.company, description: jobRow.description ?? "" },
-      maxLength: coverLetterField.maxLength,
-    });
+    const result = await withUsageUser(app.user_id, () =>
+      generateCoverLetter({
+        profile,
+        job: { title: jobRow.title, company: jobRow.company, description: jobRow.description ?? "" },
+        maxLength: coverLetterField.maxLength,
+      }),
+    );
     if (result.ok) {
       coverLetter = result.text;
       resolvedFields[coverLetterField.id] = result.text;
@@ -120,10 +124,12 @@ export async function resolveApplication(applicationId: string): Promise<void> {
   //    and the packet view falls back to the untailored profile.
   let tailoredCv = null;
   try {
-    tailoredCv = await tailorCv({
-      profile,
-      job: { title: jobRow.title, company: jobRow.company, description: jobRow.description ?? "" },
-    });
+    tailoredCv = await withUsageUser(app.user_id, () =>
+      tailorCv({
+        profile,
+        job: { title: jobRow.title, company: jobRow.company, description: jobRow.description ?? "" },
+      }),
+    );
   } catch (err) {
     console.error(`[resolve] ${applicationId}: tailored CV failed (continuing):`, String(err).slice(0, 200));
   }
