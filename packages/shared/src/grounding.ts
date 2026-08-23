@@ -67,6 +67,44 @@ export function looksLikeRefusal(value: string): boolean {
 }
 
 /**
+ * Numbers a candidate's own profile cannot account for.
+ *
+ * Free text was the one answer class with no structural backstop: selects are
+ * matched against the live option list, the tailored CV is indices rather than
+ * prose, deterministic matches are pattern-bound — but "I cut p95 latency 40%"
+ * had only prompt wording behind it, and the cover-letter prompt actively asks
+ * for numbers. A fabricated metric is the most quietly damaging thing this
+ * product can put in front of an employer, because it is the one thing an
+ * interviewer will test.
+ *
+ * Deliberately narrow, to stay useful rather than noisy:
+ *  - single digits are ignored ("two or three teams" is not a metric claim)
+ *  - anything appearing anywhere in the profile passes, including inside dates
+ *  - only percentages and 2+ digit figures are treated as claims
+ */
+export function ungroundedNumbers(text: string, profile: Profile): string[] {
+  const haystack = JSON.stringify(profile).replace(/[^\d]/g, " ");
+  const profileNumbers = new Set(haystack.split(/\s+/).filter(Boolean));
+
+  const claims = text.match(/\d[\d,.]*\s*%?/g) ?? [];
+  const ungrounded = new Set<string>();
+
+  for (const raw of claims) {
+    const token = raw.trim();
+    const digits = token.replace(/[^\d]/g, "");
+    if (digits.length < 2) continue; // single digits are not metric claims
+    if (profileNumbers.has(digits)) continue;
+    // Bare years are excluded. They are rarely the fabrication that does damage
+    // — that is percentages, headcounts and money — and flagging one costs a
+    // whole cover letter, since a violation gets a single retry before the
+    // letter is dropped and the application parks.
+    if (!token.includes("%") && /^(19|20)\d{2}$/.test(digits)) continue;
+    ungrounded.add(token.replace(/\s+/g, ""));
+  }
+  return [...ungrounded];
+}
+
+/**
  * The last gate before a machine-written value becomes an answer an employer
  * reads. Returns the value, or null to park the field for the human.
  *
@@ -91,6 +129,12 @@ export function groundAnswer(profile: Profile, field: Field, value: string | nul
   }
 
   if (looksLikeRefusal(value)) return null;
+
+  // A number-typed answer the profile cannot account for is an invented figure.
+  // The Answer Library and the user's own edits never reach this function, so
+  // this only ever nulls a value the model produced — and nulling parks the
+  // field for the human, which is the FR-14 contract.
+  if (field.type === "number" && ungroundedNumbers(value, profile).length > 0) return null;
 
   return value;
 }
