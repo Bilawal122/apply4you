@@ -11,6 +11,10 @@ export const PreferencesSchema = z.object({
   industries: z.array(z.string()),
   excludedCompanies: z.array(z.string()),
   excludedKeywords: z.array(z.string()),
+  /** Requires UK visa sponsorship. Weights licensed sponsors in ranking and
+   *  keeps unlicensed employers out of the auto-queue. Defaults to false so an
+   *  existing account's behaviour is unchanged until the user says otherwise. */
+  needsSponsorship: z.boolean().default(false),
   dailyCap: z.number().int().positive().max(100),
   autoSubmit: z.boolean(),
 });

@@ -21,6 +21,19 @@ export const REASONS_FOR_TOP = 40;
 export const TITLE_BOOST = 8;
 
 /**
+ * Added when the user needs sponsorship and the employer holds a licence.
+ *
+ * Larger than TITLE_BOOST because it is closer to a dealbreaker than a
+ * preference: a perfect-fit role at an employer that cannot legally hire you is
+ * worth less than a decent one at an employer that can. It is a boost rather
+ * than a filter because the register is matched on a normalised company name
+ * and can miss — dropping every unmatched employer would quietly hide most of
+ * the feed. The auto-queue, which spends the user's application budget without
+ * asking, does exclude rather than down-rank.
+ */
+export const SPONSOR_BOOST = 15;
+
+/**
  * Whether a job title satisfies one of the user's preferred titles.
  *
  * Every token of a preference must appear in the title, so "software engineer"
@@ -36,15 +49,18 @@ export function titleMatches(prefTitles: string[], jobTitle: string): boolean {
   });
 }
 
-/** Applies the title boost and orders by final score. Pure, so both paths agree. */
-export function rankMatches<T extends { jobId: string; score: number; title: string }>(
+/** Applies the boosts and orders by final score. Pure, so both paths agree. */
+export function rankMatches<
+  T extends { jobId: string; score: number; title: string; sponsorLicensed?: boolean },
+>(
   candidates: T[],
-  prefTitles: string[],
+  prefs: { titles: string[]; needsSponsorship?: boolean },
 ): { jobId: string; score: number }[] {
   return candidates
-    .map(({ jobId, score, title }) => ({
-      jobId,
-      score: Math.min(100, score + (titleMatches(prefTitles, title) ? TITLE_BOOST : 0)),
-    }))
+    .map(({ jobId, score, title, sponsorLicensed }) => {
+      const titleBoost = titleMatches(prefs.titles, title) ? TITLE_BOOST : 0;
+      const sponsorBoost = prefs.needsSponsorship && sponsorLicensed ? SPONSOR_BOOST : 0;
+      return { jobId, score: Math.min(100, score + titleBoost + sponsorBoost) };
+    })
     .sort((a, b) => b.score - a.score);
 }

@@ -67,6 +67,7 @@ export type PreferencesRow = {
   industries: string[];
   excluded_companies: string[];
   excluded_keywords: string[];
+  needs_sponsorship: boolean;
   daily_cap: number;
   auto_submit: boolean;
 };
@@ -81,6 +82,7 @@ export function rowToPreferences(row: PreferencesRow): Preferences {
     industries: row.industries,
     excludedCompanies: row.excluded_companies,
     excludedKeywords: row.excluded_keywords,
+    needsSponsorship: row.needs_sponsorship ?? false,
     dailyCap: row.daily_cap,
     autoSubmit: row.auto_submit,
   });
@@ -96,6 +98,7 @@ export function preferencesToRow(prefs: Preferences): Omit<PreferencesRow, "user
     industries: prefs.industries,
     excluded_companies: prefs.excludedCompanies,
     excluded_keywords: prefs.excludedKeywords,
+    needs_sponsorship: prefs.needsSponsorship,
     daily_cap: prefs.dailyCap,
     auto_submit: prefs.autoSubmit,
   };

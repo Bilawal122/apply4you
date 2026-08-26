@@ -23,10 +23,13 @@ async function matchUser(userId: string): Promise<void> {
   }
 
   const jobIds = matches.map((m: { job_id: string }) => m.job_id);
-  type JobRow = { id: string; title: string; company: string; description: string | null };
+  type JobRow = {
+    id: string; title: string; company: string; description: string | null;
+    sponsor_verdict: { licensed?: boolean } | null;
+  };
   const { data: jobs } = await db
     .from("jobs")
-    .select("id, title, company, description")
+    .select("id, title, company, description, sponsor_verdict")
     .in("id", jobIds)
     .overrideTypes<JobRow[]>();
   const jobById = new Map<string, JobRow>((jobs ?? []).map((j) => [j.id, j]));
@@ -38,8 +41,9 @@ async function matchUser(userId: string): Promise<void> {
       jobId: m.job_id,
       score: m.score,
       title: jobById.get(m.job_id)?.title ?? "",
+      sponsorLicensed: jobById.get(m.job_id)?.sponsor_verdict?.licensed === true,
     })),
-    preferences.titles,
+    preferences,
   );
 
   // One-line reasons for the top slice only (cost control).

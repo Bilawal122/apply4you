@@ -55,18 +55,19 @@ export async function runMatchNow(userId: string): Promise<{ embedded: boolean; 
   const jobIds = candidates.map((c: { job_id: string }) => c.job_id);
   const { data: jobs } = await db
     .from("jobs")
-    .select("id, title")
+    .select("id, title, sponsor_verdict")
     .in("id", jobIds)
-    .overrideTypes<{ id: string; title: string }[]>();
-  const titleById = new Map((jobs ?? []).map((j) => [j.id, j.title]));
+    .overrideTypes<{ id: string; title: string; sponsor_verdict: { licensed?: boolean } | null }[]>();
+  const jobById = new Map((jobs ?? []).map((j) => [j.id, j]));
 
   const scored = rankMatches(
     candidates.map((c: { job_id: string; score: number }) => ({
       jobId: c.job_id,
       score: c.score,
-      title: titleById.get(c.job_id) ?? "",
+      title: jobById.get(c.job_id)?.title ?? "",
+      sponsorLicensed: jobById.get(c.job_id)?.sponsor_verdict?.licensed === true,
     })),
-    preferences.titles,
+    preferences,
   );
 
   // `reason` is omitted, not nulled: on a row the worker has already written a
