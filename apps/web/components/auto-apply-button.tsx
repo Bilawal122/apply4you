@@ -58,12 +58,13 @@ export function AutoApplyButton({
           startTransition(async () => {
             setMessage(null);
             const res = await queueTopMatches(n);
-            if (res.error) {
-              setMessage(res.error);
-              return;
-            }
-            setMessage(`${res.queued} started — the AI is filling them now`);
-            router.refresh();
+            // `error` with a non-zero `queued` is a PARTIAL result: some drafts
+            // reached the worker queue and some did not. Returning early there
+            // would skip the refresh and hide the ones that did start, so the
+            // message is shown and the list is refreshed either way.
+            if (res.error) setMessage(res.error);
+            else setMessage(`${res.queued} started — the AI is filling them now`);
+            if (res.queued) router.refresh();
           })
         }
         className={btnPrimarySm}

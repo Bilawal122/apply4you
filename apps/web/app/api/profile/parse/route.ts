@@ -51,7 +51,10 @@ export async function POST(request: NextRequest) {
     } else {
       const mammoth = await import("mammoth");
       const { value } = await mammoth.extractRawText({ buffer: Buffer.from(bytes) });
-      parsed = await parseResumeText(value);
+      // Wrapped like the PDF branch above: without it every DOCX parse landed
+      // in ai_usage with a null user_id, so the cost of a whole upload format
+      // was attributable to nobody.
+      parsed = await withUsageUser(user.id, () => parseResumeText(value));
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "parse failed";

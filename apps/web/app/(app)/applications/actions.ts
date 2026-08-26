@@ -161,15 +161,25 @@ async function approveOne(userId: string, applicationId: string): Promise<string
     .select("id");
   if (!transitioned?.length) return "already picked up";
 
+  // The event is written AFTER the enqueue, and says which of the two actually
+  // happened. It used to be written first and always read "queued for
+  // submission" — but enqueueSubmit is best-effort and cannot throw, so with
+  // Redis down the row flipped to `approved`, the trail said it was queued, the
+  // UI said "submitting soon", and nothing had been enqueued at all. The only
+  // recovery is the worker's boot re-enqueue, and the worker boots by pinging
+  // the same Redis that just refused this.
+  const atsType = (app.jobs as unknown as { ats_type: string }).ats_type;
+  const enqueued = await enqueueSubmit(atsType, applicationId);
+
   await admin.from("application_events").insert({
     application_id: applicationId,
     user_id: userId,
     status: "approved",
-    message: "Approved — queued for submission",
+    message: enqueued
+      ? "Approved — queued for submission"
+      : "Approved — waiting for the submission worker to come back online",
   });
 
-  const atsType = (app.jobs as unknown as { ats_type: string }).ats_type;
-  await enqueueSubmit(atsType, applicationId);
   return null;
 }
 

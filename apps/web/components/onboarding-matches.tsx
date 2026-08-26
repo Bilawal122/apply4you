@@ -81,7 +81,10 @@ export function OnboardingMatches() {
           try {
             const res = await queueTopMatches(Math.min(AUTO_QUEUE_MAX, status.matches));
             if (cancelled) return;
-            if (res.error && !res.queued) setError(res.error);
+            // Shown even when some queued: a partial result means part of the
+            // batch is not being worked on, which the user cannot see from the
+            // count alone.
+            if (res.error) setError(res.error);
             setQueuedCount(res.queued ?? 0);
             setPhase("done");
           } catch {

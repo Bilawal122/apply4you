@@ -185,6 +185,7 @@ export async function queueTopMatches(count: number): Promise<{ queued?: number;
   }
 
   let queued = 0;
+  let stranded = 0;
   for (const jobId of targets) {
     const { data: app, error } = await admin
       .from("applications")
@@ -198,16 +199,33 @@ export async function queueTopMatches(count: number): Promise<{ queued?: number;
       status: "draft",
       message: "Queued — AI is filling out the application",
     });
+    // Counted only when the enqueue actually landed. The old comment here said
+    // "Worker picks it up when the queue is reachable again" — that is true of
+    // `approved` rows, which the worker re-enqueues on boot, and false of
+    // drafts, which nothing re-enqueues. enqueueResolve is the one enqueue that
+    // deliberately throws for exactly this reason, and this loop caught it and
+    // incremented anyway: the button then reported "10 started" when none had
+    // been, and the drafts sat with form_schema null forever.
     try {
       await enqueueResolve(app.id);
+      queued++;
     } catch {
-      // Worker picks it up when the queue is reachable again.
+      stranded++;
     }
-    queued++;
   }
 
   revalidatePath("/feed", "page");
   revalidatePath("/applications", "page");
+  // A partial result reports both halves: the drafts exist either way, so the
+  // user needs to know some of them are not being worked on.
+  if (stranded > 0) {
+    return {
+      queued,
+      error:
+        `${stranded} of ${queued + stranded} couldn't reach the worker queue and are waiting — ` +
+        `they'll start filling when the worker is back.`,
+    };
+  }
   return { queued };
 }
 
