@@ -30,6 +30,15 @@ export function MatchNow() {
     setMessage(null);
     try {
       const res = await fetch("/api/profile/rematch", { method: "POST" });
+
+      // An expired session is redirected to /login by the middleware, and fetch
+      // follows that redirect — so the reply is the login page at status 200,
+      // not a 401. Reading it as JSON throws "Unexpected token '<'", which tells
+      // the user nothing about what actually happened.
+      if (!res.headers.get("content-type")?.includes("application/json")) {
+        throw new Error("Your session expired. Sign in again to see your matches.");
+      }
+
       const body = (await res.json()) as { matches?: number; error?: string };
       if (!res.ok) throw new Error(body.error ?? "Matching failed.");
       if ((body.matches ?? 0) === 0) {
