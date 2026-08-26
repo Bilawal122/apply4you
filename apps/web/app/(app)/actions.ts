@@ -125,22 +125,6 @@ export async function getMatchingStatus(): Promise<{
   };
 }
 
-/** Re-kick the embed -> match chain if the first enqueue was dropped or stalled. */
-export async function retryMatching(): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Not signed in" };
-
-  try {
-    await enqueueProfileEmbedding(user.id);
-    return {};
-  } catch {
-    return { error: "The matching queue is unreachable right now — try again in a minute." };
-  }
-}
-
 /** Feed "Queue top N": bulk-create drafts for the best unapplied matches. */
 export async function queueTopMatches(count: number): Promise<{ queued?: number; error?: string }> {
   const supabase = await createClient();
@@ -154,30 +138,51 @@ export async function queueTopMatches(count: number): Promise<{ queued?: number;
 
   const [{ data: existing }, { data: prefsRow }] = await Promise.all([
     admin.from("applications").select("job_id").eq("user_id", user.id),
-    admin.from("preferences").select("excluded_companies").eq("user_id", user.id).single(),
+    admin
+      .from("preferences")
+      .select("excluded_companies, needs_sponsorship")
+      .eq("user_id", user.id)
+      .single(),
   ]);
   const appliedJobIds = new Set((existing ?? []).map((r: { job_id: string }) => r.job_id));
   const blocklist = new Set(
     ((prefsRow?.excluded_companies ?? []) as string[]).map((c) => c.trim().toLowerCase()),
   );
+  const needsSponsorship = prefsRow?.needs_sponsorship === true;
 
   const { data: matches } = await admin
     .from("job_matches")
-    .select("job_id, jobs!inner(closed_at, company)")
+    .select("job_id, jobs!inner(closed_at, company, sponsor_verdict)")
     .eq("user_id", user.id)
     .is("jobs.closed_at", null)
     .order("score", { ascending: false })
     .limit(n + appliedJobIds.size);
 
+  // Sponsorship excludes here rather than down-ranking, unlike ranking. This
+  // function spends the user's application budget without asking them job by
+  // job — onboarding calls it with the top 10, which for a free account is
+  // every application they have. Sending those to employers that hold no
+  // licence, and legally cannot hire the person, is the wedge's oldest
+  // complaint and the one thing this product exists not to do.
   const targets = (matches ?? [])
     .filter((m) => {
-      const company = (m.jobs as unknown as { company: string }).company;
-      return !blocklist.has(company.trim().toLowerCase());
+      const job = m.jobs as unknown as { company: string; sponsor_verdict: { licensed?: boolean } | null };
+      if (blocklist.has(job.company.trim().toLowerCase())) return false;
+      if (needsSponsorship && job.sponsor_verdict?.licensed !== true) return false;
+      return true;
     })
     .map((m: { job_id: string }) => m.job_id)
     .filter((id: string) => !appliedJobIds.has(id))
     .slice(0, n);
-  if (targets.length === 0) return { error: "No unqueued matches left — check back after the next job sync" };
+  if (targets.length === 0) {
+    // Never backfill with unlicensed employers to hit the requested count —
+    // say there were none, so the number the user sees stays true.
+    return {
+      error: needsSponsorship
+        ? "No unqueued matches at licensed sponsors right now — widen your titles or locations, or turn off the sponsorship filter in preferences"
+        : "No unqueued matches left — check back after the next job sync",
+    };
+  }
 
   let queued = 0;
   for (const jobId of targets) {

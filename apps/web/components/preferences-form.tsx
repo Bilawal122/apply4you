@@ -147,18 +147,32 @@ export function PreferencesForm({ initial, redirectTo }: { initial: Preferences;
       <section className={`${cardCls} px-6 py-6 sm:px-7`}>
         <Eyebrow>What to apply to</Eyebrow>
 
+        {/*
+          First, because for this product's core user it is the question that
+          decides whether every other answer matters. It is a boost in ranking
+          and a hard exclusion in the auto-queue — see packages/shared/matching.
+        */}
+        <div className="mt-5 border-b border-line-soft pb-2">
+          <ToggleRow
+            label="I need UK visa sponsorship"
+            description="Prioritises employers on the Home Office register of licensed sponsors, and keeps unlicensed ones out of anything queued for you automatically. A licence means an employer can sponsor — never that this role is sponsored."
+            checked={prefs.needsSponsorship}
+            onChange={(checked) => set("needsSponsorship", checked)}
+          />
+        </div>
+
         <div className="mt-5 flex flex-col gap-6">
           <ChipInput
             label="Target job titles — your keywords"
             hint="The AI matches every open job against these by meaning, not just exact text — add a few and it'll catch close variants too."
-            placeholder="Software Engineer, Frontend Engineer"
+            placeholder="Paralegal, Customer Service Advisor, Software Engineer"
             value={prefs.titles}
             onChange={(v) => set("titles", v)}
           />
           <ChipInput
             label="Locations — not used for matching yet"
             hint="Stored for later. Ranking currently uses titles, seniority, industries, skills and your CV — filter the feed by location in the meantime."
-            placeholder="San Francisco, New York, Remote"
+            placeholder="London, Manchester, Remote (UK)"
             value={prefs.locations}
             onChange={(v) => set("locations", v)}
           />
@@ -170,7 +184,7 @@ export function PreferencesForm({ initial, redirectTo }: { initial: Preferences;
           />
           <ChipInput
             label="Industries (blank for all)"
-            placeholder="Fintech, Healthcare"
+            placeholder="Legal, Healthcare, Retail, Fintech"
             value={prefs.industries}
             onChange={(v) => set("industries", v)}
           />

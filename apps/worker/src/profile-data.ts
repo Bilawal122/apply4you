@@ -47,6 +47,7 @@ export async function loadProfileAndPrefs(
     industries: prefs.industries,
     excludedCompanies: prefs.excluded_companies,
     excludedKeywords: prefs.excluded_keywords,
+    needsSponsorship: prefs.needs_sponsorship ?? false,
     dailyCap: prefs.daily_cap,
     autoSubmit: prefs.auto_submit,
   });
