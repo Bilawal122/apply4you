@@ -140,3 +140,29 @@ export async function enqueueSubmit(atsType: string, applicationId: string): Pro
     queue(submitQueueFor(atsType)).add("submit-application", { applicationId }, { jobId: `submit-${applicationId}` }),
   );
 }
+
+/**
+ * Is the queue actually reachable?
+ *
+ * Every producer here is deliberately forgiving — a queue that is down must not
+ * cost someone their save or their approval — which means an outage is quiet by
+ * construction. The only way to observe one was to read Vercel's runtime logs
+ * after a signed-in user happened to touch a Redis path, which is a terrible
+ * way to answer "is it up?" and cost real hours during the outage this was
+ * written in.
+ *
+ * Uses the same cached connection the producers use, so the answer reflects
+ * what the app actually experiences rather than what a fresh socket would.
+ * Never throws, and never reveals the URL or credentials — the caller gets a
+ * state and, at most, an error code.
+ */
+export async function pingQueue(): Promise<{ ok: boolean; detail: string; latencyMs: number }> {
+  const started = Date.now();
+  try {
+    const pong = await bounded(() => redis().ping());
+    return { ok: pong === "PONG", detail: pong, latencyMs: Date.now() - started };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { ok: false, detail: message.slice(0, 120), latencyMs: Date.now() - started };
+  }
+}

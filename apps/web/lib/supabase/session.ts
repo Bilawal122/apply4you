@@ -36,6 +36,7 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/auth") || // email-link landing + error page
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/check") || // public sponsor-licence checker
+    pathname.startsWith("/api/health") || // liveness, readable when signed out
     pathname.startsWith("/privacy") ||
     pathname.startsWith("/terms");
   // /update-password is intentionally NOT public: the recovery link creates a
