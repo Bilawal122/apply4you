@@ -77,11 +77,13 @@ async function bounded<T>(fn: () => Promise<T>): Promise<T> {
  * without a word, so a Redis that had been unreachable for an hour looked
  * exactly like a Redis that was fine.
  */
-async function bestEffort(label: string, fn: () => Promise<unknown>): Promise<void> {
+async function bestEffort(label: string, fn: () => Promise<unknown>): Promise<boolean> {
   try {
     await bounded(fn);
+    return true;
   } catch (err) {
     console.warn(`[queue] ${label} not enqueued: ${err instanceof Error ? err.message : String(err)}`);
+    return false;
   }
 }
 
@@ -98,8 +100,8 @@ function queue(name: string): Queue {
   return globalThis.__queues[name];
 }
 
-export async function enqueueProfileEmbedding(userId: string): Promise<void> {
-  await bestEffort("embed-profile", () =>
+export async function enqueueProfileEmbedding(userId: string): Promise<boolean> {
+  return bestEffort("embed-profile", () =>
     queue(QUEUES.profileEmbedding).add(
       "embed-profile",
       { userId },
@@ -125,11 +127,16 @@ export async function enqueueResolve(applicationId: string): Promise<void> {
   );
 }
 
-export async function enqueueSubmit(atsType: string, applicationId: string): Promise<void> {
-  // Recoverable: the worker re-enqueues every `approved` row on boot
-  // (apps/worker/src/index.ts), so a lost enqueue costs a delay, not the
-  // application. Never let it cost the user their approval click.
-  await bestEffort("submit-application", () =>
+export async function enqueueSubmit(atsType: string, applicationId: string): Promise<boolean> {
+  // Recoverable, so it never costs the user their approval click: the worker
+  // re-enqueues every `approved` row on boot (apps/worker/src/index.ts).
+  //
+  // But it returns whether it landed, because "recoverable" is not the same as
+  // "happened". Recovery needs a worker that can boot, and the worker boots by
+  // pinging the same Redis this just failed against — so when this returns
+  // false, the honest thing to tell the user is that it is waiting, not that it
+  // is on its way.
+  return bestEffort("submit-application", () =>
     queue(submitQueueFor(atsType)).add("submit-application", { applicationId }, { jobId: `submit-${applicationId}` }),
   );
 }
