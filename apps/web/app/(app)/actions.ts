@@ -125,22 +125,6 @@ export async function getMatchingStatus(): Promise<{
   };
 }
 
-/** Re-kick the embed -> match chain if the first enqueue was dropped or stalled. */
-export async function retryMatching(): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Not signed in" };
-
-  try {
-    await enqueueProfileEmbedding(user.id);
-    return {};
-  } catch {
-    return { error: "The matching queue is unreachable right now — try again in a minute." };
-  }
-}
-
 /** Feed "Queue top N": bulk-create drafts for the best unapplied matches. */
 export async function queueTopMatches(count: number): Promise<{ queued?: number; error?: string }> {
   const supabase = await createClient();

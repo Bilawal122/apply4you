@@ -1,5 +1,5 @@
 import { Worker, type Job } from "bullmq";
-import { QUEUES } from "@apply4you/shared";
+import { MATCH_LIMIT, QUEUES, REASONS_FOR_TOP, rankMatches } from "@apply4you/shared";
 import { generateMatchReasons, withUsageUser } from "@apply4you/ai";
 import { queues, workerConnection } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
@@ -7,18 +7,6 @@ import { loadProfileAndPrefs } from "../profile-data.js";
 import { enqueueMissingProfileEmbeddings } from "./embed.js";
 
 type MatchUserData = { userId: string };
-
-const MATCH_LIMIT = 100;
-const REASONS_FOR_TOP = 40;
-const TITLE_BOOST = 8;
-
-function titleMatches(prefTitles: string[], jobTitle: string): boolean {
-  const title = jobTitle.toLowerCase();
-  return prefTitles.some((t) => {
-    const tokens = t.toLowerCase().split(/\s+/).filter((tok) => tok.length > 2);
-    return tokens.length > 0 && tokens.every((tok) => title.includes(tok));
-  });
-}
 
 async function matchUser(userId: string): Promise<void> {
   const db = supabaseAdmin();
@@ -43,13 +31,16 @@ async function matchUser(userId: string): Promise<void> {
     .overrideTypes<JobRow[]>();
   const jobById = new Map<string, JobRow>((jobs ?? []).map((j) => [j.id, j]));
 
-  // Title boost happens here (not SQL) — token matching is easier in TS.
-  const scored = matches.map((m: { job_id: string; score: number }) => {
-    const job = jobById.get(m.job_id);
-    const boost = job && titleMatches(preferences.titles, job.title) ? TITLE_BOOST : 0;
-    return { jobId: m.job_id, score: Math.min(100, m.score + boost) };
-  });
-  scored.sort((a: { score: number }, b: { score: number }) => b.score - a.score);
+  // Title boost happens here (not SQL) — token matching is easier in TS. Shared
+  // with the web's inline path so both produce the same order.
+  const scored = rankMatches(
+    matches.map((m: { job_id: string; score: number }) => ({
+      jobId: m.job_id,
+      score: m.score,
+      title: jobById.get(m.job_id)?.title ?? "",
+    })),
+    preferences.titles,
+  );
 
   // One-line reasons for the top slice only (cost control).
   const top = scored.slice(0, REASONS_FOR_TOP);

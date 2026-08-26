@@ -7,7 +7,7 @@ import { formatSalary } from "@/lib/salary";
 import { QueueButton } from "@/components/queue-button";
 import { AutoApplyButton } from "@/components/auto-apply-button";
 import { FeedFilters } from "@/components/feed-filters";
-import { AutoRefresh } from "@/components/auto-refresh";
+import { MatchNow } from "@/components/match-now";
 import { Chip, ScoreBadge, SponsorBadge, cardCls } from "@/components/ui";
 import type { SponsorVerdict } from "@/lib/sponsors";
 
@@ -183,16 +183,11 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
 
       {matchingPending ? (
         <div className={`${cardCls} px-6 py-14 text-center`}>
-          <AutoRefresh />
-          <p className="label-mono text-accent">matching in progress…</p>
-          <p className="mx-auto mt-3 max-w-md text-[14.5px] leading-[1.6] text-ink-body">
-            We&apos;re reading your profile against every open job. This takes about a minute after you
-            save your <Link href="/profile" className="underline underline-offset-2">profile</Link> and{" "}
-            <Link href="/preferences" className="underline underline-offset-2">preferences</Link> — this page refreshes
-            itself.
-          </p>
+          {/* Asks for the match run rather than polling for one the worker may
+              never have been given — see components/match-now.tsx. */}
+          <MatchNow />
           <p className="mx-auto mt-2.5 max-w-md text-[13px] leading-[1.55] text-ink-faint">
-            Still here after a few minutes? Your criteria may be too narrow — try widening your{" "}
+            Ranked against your <Link href="/profile" className="underline underline-offset-2">profile</Link> and{" "}
             <Link href="/preferences" className="underline underline-offset-2">preferences</Link>.
           </p>
         </div>

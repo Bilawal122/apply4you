@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { getMatchingStatus, queueTopMatches, retryMatching } from "@/app/(app)/actions";
+import { getMatchingStatus, queueTopMatches } from "@/app/(app)/actions";
 import { Spinner, btnLink, btnPrimary, cardCls, cardDarkCls } from "@/components/ui";
 
 const POLL_MS = 2500;
@@ -16,10 +16,15 @@ type Phase = "searching" | "queuing" | "done" | "stalled";
 const darkEyebrow = "font-mono text-[10.5px] font-medium uppercase tracking-[0.1em] text-on-slate-faint";
 
 /**
- * Onboarding step 4. Polls the match pipeline (profile embed -> match-user in
- * the worker, normally 5-20s), then queues the top matches as review-gated
- * drafts automatically — the "we started applying for you" moment. Nothing is
- * ever submitted without the user's approval.
+ * Onboarding step 4. Asks for a match run, polls until it lands, then queues the
+ * top matches as review-gated drafts — the "we started applying for you" moment.
+ * Nothing is ever submitted without the user's approval.
+ *
+ * It asks rather than only polling because the queue path is best-effort: when
+ * Redis is unreachable the enqueue is dropped, and a poll loop then waits out
+ * its full stall timeout against work nobody scheduled. `/api/profile/rematch`
+ * does the same embed-and-match in-request, so this step completes with or
+ * without a worker.
  */
 export function OnboardingMatches() {
   const [phase, setPhase] = useState<Phase>("searching");
@@ -40,6 +45,11 @@ export function OnboardingMatches() {
     let cancelled = false;
     // Start (or restart, when `runId` bumps) the stall clock for this run.
     startedAt.current = Date.now();
+
+    // Fire-and-forget: the poll below is what reads the result, and it must keep
+    // running even if this request fails, because the worker may be doing the
+    // same job in parallel and get there first.
+    void fetch("/api/profile/rematch", { method: "POST" }).catch(() => undefined);
 
     async function tick() {
       if (cancelled) return;
@@ -100,17 +110,13 @@ export function OnboardingMatches() {
     };
   }, [runId]);
 
-  const retry = async () => {
+  const retry = () => {
     setError(null);
-    const res = await retryMatching();
-    if (res.error) {
-      setError(res.error);
-      return;
-    }
     startedAt.current = Date.now();
     queueStarted.current = false;
     setPhase("searching");
-    setRunId((r) => r + 1); // restart the poll loop
+    // Bumping runId re-runs the effect, which issues the rematch request itself.
+    setRunId((r) => r + 1);
   };
 
   if (phase === "done") {
@@ -186,7 +192,7 @@ export function OnboardingMatches() {
           </p>
         )}
         <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3">
-          <button type="button" onClick={() => void retry()} className={btnPrimary}>
+          <button type="button" onClick={retry} className={btnPrimary}>
             Retry
           </button>
           <Link href="/feed" className={btnLink}>
