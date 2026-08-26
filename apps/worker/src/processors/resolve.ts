@@ -11,7 +11,7 @@ import {
   type AtsType,
 } from "@apply4you/shared";
 import { getAdapter, type JobRef } from "@apply4you/ats";
-import { resolveDeterministic, resolveFieldsWithLlm, generateCoverLetter, tailorCv, withUsageUser } from "@apply4you/ai";
+import { resolveDeterministic, resolveFieldsWithLlm, generateCoverLetter, postValidate, tailorCv, withUsageUser } from "@apply4you/ai";
 import { workerConnection } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
 import { loadProfileAndPrefs } from "../profile-data.js";
@@ -84,7 +84,34 @@ export async function resolveApplication(applicationId: string): Promise<void> {
   //    needs_review AND saves a model call.
   const { resolved: deterministic, remaining } = resolveDeterministic(resolvable, profile);
 
-  const fromLibrary = resolveFromLibrary(remaining, answerLibrary);
+  // Library answers are canonicalised against the live option list, exactly as
+  // the model's are. They were the one answer class written to the form
+  // verbatim: the model's go through postValidate/matchOption and the
+  // deterministic ones are pattern-bound, but a saved answer was inserted as
+  // typed. A stored "Yes" against a Greenhouse select whose real option reads
+  // "Yes, I will now or in the future require sponsorship" then counted as
+  // answered — so the required-field pre-flight passed, review showed a green
+  // "Your saved answers" badge, and the fill threw at submit time. On the
+  // sponsorship question, which is the whole point of the library.
+  //
+  // A value that cannot be canonicalised is dropped here rather than repaired,
+  // so the field falls through to the model and, failing that, parks for the
+  // user. Answering it wrongly on their behalf is the one outcome worth
+  // avoiding.
+  const fromLibraryRaw = resolveFromLibrary(remaining, answerLibrary);
+  const fromLibrary: Record<string, string> = {};
+  for (const field of remaining) {
+    const raw = fromLibraryRaw[field.id];
+    if (raw === undefined) continue;
+    const validated = postValidate(field, raw);
+    if (validated !== null) {
+      fromLibrary[field.id] = validated;
+    } else {
+      console.warn(
+        `[resolve] ${applicationId}: saved answer for "${field.label.slice(0, 50)}" does not match this form's options — parking it`,
+      );
+    }
+  }
   const stillOpen = remaining.filter((f) => !(f.id in fromLibrary));
 
   const llmResolved = await withUsageUser(app.user_id, () =>

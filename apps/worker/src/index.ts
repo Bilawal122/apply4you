@@ -126,6 +126,58 @@ async function reenqueueApprovedApplications(): Promise<void> {
   if (requeued) console.log(`[worker] re-enqueued ${requeued} approved application(s)`);
 }
 
+/**
+ * A resolve that is genuinely in flight finishes well inside this, so anything
+ * older was never picked up.
+ */
+const DRAFT_STALE_MS = 5 * 60 * 1000;
+
+/**
+ * Drafts whose resolve job was never enqueued.
+ *
+ * `enqueueResolve` is the one producer written to throw, precisely because
+ * nothing re-enqueued a draft: a lost resolve left a row that says "queued —
+ * AI is filling out the application" and never fills. Both web callers now
+ * report the failure, which is honest but not a recovery — the drafts still
+ * exist and still never fill. This is the recovery.
+ *
+ * Bounded by three things so it cannot run away: a permanently failed
+ * resolution sets `status = 'failed'` and so never matches; the deterministic
+ * jobId dedupes against a job already waiting or active; and the staleness
+ * window keeps it away from a resolve that started moments ago.
+ */
+async function reenqueueStrandedDrafts(): Promise<void> {
+  const db = supabaseAdmin();
+  const cutoff = new Date(Date.now() - DRAFT_STALE_MS).toISOString();
+
+  const { data: stranded } = await db
+    .from("applications")
+    .select("id")
+    .eq("status", "draft")
+    .is("form_schema", null)
+    .lt("created_at", cutoff);
+
+  let requeued = 0;
+  for (const row of stranded ?? []) {
+    await queues.resolve
+      .add(
+        "resolve-application",
+        { applicationId: row.id },
+        {
+          jobId: `resolve-${row.id}`,
+          // Matches what the web producer sets. Without it a completed record
+          // lingers under the same deterministic jobId and silently swallows
+          // every future re-enqueue of the same application.
+          removeOnComplete: true,
+          removeOnFail: true,
+        },
+      )
+      .catch(() => undefined);
+    requeued++;
+  }
+  if (requeued) console.log(`[worker] re-enqueued ${requeued} stranded draft(s)`);
+}
+
 async function main(): Promise<void> {
   const pong = await connection.ping();
   console.log(`[worker] redis connected (${pong})`);
@@ -136,6 +188,7 @@ async function main(): Promise<void> {
   await reconcileStuckSubmissions();
   await reenqueueApprovedApplications();
   await enqueueMissingProfileEmbeddings();
+  await reenqueueStrandedDrafts();
 
   await schedulePolling();
   await scheduleRetention();

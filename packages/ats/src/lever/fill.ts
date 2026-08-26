@@ -1,6 +1,6 @@
 import type { Page } from "playwright-core";
 import type { Field, ResolvedValues, SubmitResult } from "@apply4you/shared";
-import type { LocalFile } from "../types.js";
+import { LocalFile, type FillFailure, type FillReport } from "../types.js";
 import { detectCommonBlocks, humanPause, typeInto } from "../fill-helpers.js";
 
 const MULTI_SEP = "||";
@@ -11,7 +11,8 @@ export async function fillLeverForm(
   fields: Field[],
   values: ResolvedValues,
   resume: LocalFile,
-): Promise<void> {
+): Promise<FillReport> {
+  const failed: FillFailure[] = [];
   for (const field of fields) {
     try {
       if (field.type === "file") {
@@ -57,8 +58,10 @@ export async function fillLeverForm(
       // One uncooperative control must never cost the whole application:
       // the rest of the form still submits and the gap shows up in review.
       console.error(`[lever fill] ${field.id} (${field.label.slice(0, 50)}) failed: ${String(err).slice(0, 140)}`);
+      failed.push({ id: field.id, label: field.label, reason: String(err).slice(0, 140) });
     }
   }
+  return { failed };
 }
 
 export async function submitLever(page: Page): Promise<SubmitResult> {

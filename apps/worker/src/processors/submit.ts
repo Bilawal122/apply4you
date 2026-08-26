@@ -343,6 +343,10 @@ async function submitApplication(applicationId: string): Promise<void> {
   // us a job — 10-45s of jitter on top of the per-ATS rate limiter.
   await new Promise((r) => setTimeout(r, 10_000 + Math.random() * 35_000));
 
+  // Captured from inside the browser context so the update below can tell what
+  // was actually typed from what was merely intended.
+  const failedFieldIds = new Set<string>();
+
   try {
     const result: SubmitResult = await withBrowserContext(async (context) => {
       const page = await context.newPage();
@@ -367,7 +371,25 @@ async function submitApplication(applicationId: string): Promise<void> {
         return { outcome: "failed", reason: preBlock === "captcha" ? "captcha" : "bot_wall" } satisfies SubmitResult;
       }
 
-      await adapter.fillForm(page, fields, values, resume);
+      const fillReport = await adapter.fillForm(page, fields, values, resume);
+      if (fillReport.failed.length > 0) {
+        // Recorded, not fatal. The application still submits — one awkward
+        // control must not cost the whole thing, and the employer's own
+        // validation is the authority on whether a gap matters. But it stops
+        // being invisible: it reaches the event trail, and `submitted_fields`
+        // below drops these so the permanent record never claims an answer the
+        // browser could not type (DECISIONS.md D4).
+        for (const f of fillReport.failed) failedFieldIds.add(f.id);
+        await logEvent(
+          applicationId,
+          app.user_id,
+          "submitting",
+          `${fillReport.failed.length} field(s) could not be filled: ${fillReport.failed
+            .map((f) => f.label.slice(0, 40))
+            .join(", ")
+            .slice(0, 300)}`,
+        );
+      }
 
       const postBlock = await adapter.detectBlock(page);
       if (postBlock) {
@@ -389,7 +411,14 @@ async function submitApplication(applicationId: string): Promise<void> {
         .from("applications")
         .update({
           status: "submitted",
-          submitted_fields: values, // immutable snapshot (FR-33)
+          // Immutable snapshot (FR-33) of what was actually typed — fields the
+          // fill layer could not drive are removed rather than asserted. This
+          // used to record `values` wholesale, i.e. what we intended to send,
+          // which let the audit trail vouch for answers that never reached the
+          // employer.
+          submitted_fields: Object.fromEntries(
+            Object.entries(values).filter(([id]) => !failedFieldIds.has(id)),
+          ),
           // Retention (DECISIONS.md D4): the job row may be purged 30 days
           // after closing — everything interview prep or an audit needs
           // lives on the application from the moment of submission.

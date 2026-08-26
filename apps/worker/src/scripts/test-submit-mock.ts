@@ -349,12 +349,26 @@ async function main(): Promise<void> {
     await page.goto(`${BASE}/form?mode=inline`, { waitUntil: "domcontentloaded" });
 
     let threw: string | null = null;
+    let report: Awaited<ReturnType<typeof adapter.fillForm>> | null = null;
     try {
-      await adapter.fillForm(page, FIELDS, VALUES, missing);
+      report = await adapter.fillForm(page, FIELDS, VALUES, missing);
     } catch (err) {
       threw = String(err).slice(0, 100);
     }
     check("fillForm survives an unreadable resume", threw === null, threw ?? "");
+
+    // Surviving is not enough: the failure has to come back, or submitted_fields
+    // will record the resume as sent when nothing was uploaded (DECISIONS.md D4).
+    check(
+      "the unfillable field is REPORTED, not just survived",
+      report?.failed.some((f) => f.id === "resume") === true,
+      JSON.stringify(report?.failed ?? []),
+    );
+    check(
+      "fields that filled fine are not reported as failed",
+      report?.failed.every((f) => f.id === "resume") === true,
+      JSON.stringify(report?.failed ?? []),
+    );
 
     const r7 = await adapter.submit(page);
     const p7 = lastPost["inline"];
