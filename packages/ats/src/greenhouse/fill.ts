@@ -1,6 +1,6 @@
 import type { Page } from "playwright-core";
 import type { Field, ResolvedValues, SubmitResult } from "@apply4you/shared";
-import type { JobRef, LocalFile } from "../types.js";
+import { JobRef, LocalFile, type FillFailure, type FillReport } from "../types.js";
 import { cssEscape, detectCommonBlocks, humanPause, pickComboOption, resolveControl, typeInto } from "../fill-helpers.js";
 
 const MULTI_SEP = "||";
@@ -24,7 +24,8 @@ export async function fillGreenhouseForm(
   fields: Field[],
   values: ResolvedValues,
   resume: LocalFile,
-): Promise<void> {
+): Promise<FillReport> {
+  const failed: FillFailure[] = [];
   for (const field of fields) {
     // One awkward control must never abort the whole application: fill what we
     // can. A required field left empty surfaces as a submit validation error,
@@ -55,8 +56,10 @@ export async function fillGreenhouseForm(
       await fillOneField(page, field, value);
     } catch (err) {
       console.error(`[greenhouse fill] ${field.id} (${field.label.slice(0, 50)}) failed: ${String(err).slice(0, 120)}`);
+      failed.push({ id: field.id, label: field.label, reason: String(err).slice(0, 120) });
     }
   }
+  return { failed };
 }
 
 async function fillOneField(page: Page, field: Field, value: string): Promise<void> {
