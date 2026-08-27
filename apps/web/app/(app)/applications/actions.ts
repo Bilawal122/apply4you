@@ -143,10 +143,28 @@ async function approveOne(userId: string, applicationId: string): Promise<string
     return "this posting has closed since it was queued — nothing to send, so Skip it";
   }
 
+  // An application whose form was never read cannot be approved.
+  //
+  // This is the failure every other guard here was blind to, because they all
+  // look FOR something wrong in form_schema — an undrivable field, an
+  // unanswered required one — and a null schema contains nothing to object to.
+  // So a draft the resolver had never touched passed every check, rendered as
+  // "0 of 0 filled · ready to send", and one approval away from opening a real
+  // employer's form and clicking submit with nothing typed into it.
+  //
+  // `null` means the resolve job never ran (queue outage, worker down). An
+  // empty array means it ran and read zero fields, which for a job application
+  // is equally impossible — every real form asks for at least a name. Both are
+  // "not ready", never "nothing needed".
+  const schema = app.form_schema as Field[] | null;
+  if (!schema || schema.length === 0) {
+    return "this application hasn't been filled out yet — the AI still needs to read the employer's form. It'll be ready shortly.";
+  }
+
   // A required field type the fill layer can't drive (consent checkbox, date
   // picker, unknown widget) would fail on the employer's validation every
   // time — refuse the approval instead (DECISIONS.md D3).
-  const undrivable = ((app.form_schema ?? []) as Field[]).find(
+  const undrivable = (schema as Field[]).find(
     (f) => f.required && !FILLABLE_FIELD_TYPES.has(f.type),
   );
   if (undrivable) {

@@ -289,6 +289,21 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
     tally[coverLetter.trim() ? (edited.has("__cl") ? "you" : "ai") : "unknown"] += 1;
   }
 
+  /*
+   * The resolver has not read this employer's form yet.
+   *
+   * Every readout on this card is a tally of `formSchema`, so an empty one
+   * produced "0 questions · 0 of 0 filled", an empty "What we'll send", and —
+   * because the badge only asks whether any REQUIRED answer is missing — a
+   * green "ready to send". The reviewer was shown an empty packet and an
+   * enabled Approve button, which is the exact opposite of what a review gate
+   * is for.
+   *
+   * A real job application form always has at least one field, so zero means
+   * "not ready yet", never "nothing to fill in".
+   */
+  const notResolvedYet = app.formSchema.length === 0;
+
   const payload = (): ResolvedValues =>
     clField ? { ...values, [clField.id]: coverLetter || null } : values;
 
@@ -363,6 +378,10 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
               <span className="rounded-full bg-danger-soft px-3.5 py-2 font-mono text-[11.5px] leading-none text-danger">
                 posting closed
               </span>
+            ) : notResolvedYet ? (
+              <span className="rounded-full bg-paper-tint px-3.5 py-2 font-mono text-[11.5px] leading-none text-ink-soft">
+                still filling out
+              </span>
             ) : requiredGaps > 0 ? (
               <span className="rounded-full bg-attention-mid px-3.5 py-2 font-mono text-[11.5px] leading-none text-attention">
                 {requiredGaps} answer{requiredGaps === 1 ? "" : "s"} needed
@@ -387,6 +406,15 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
                 <span className="font-semibold text-danger">This posting has closed.</span> It disappeared
                 from the company&apos;s job board after you queued it, so there is nothing left to send. Skip
                 it — approving would spend one of your applications on a form that no longer exists.
+              </p>
+            )}
+
+            {notResolvedYet && (
+              <p className="mb-5 rounded-xl bg-paper-tint px-4 py-3.5 text-[14px] leading-[1.6] text-ink-body">
+                <span className="font-semibold text-ink">Nothing to review yet.</span> The AI hasn&apos;t
+                read this employer&apos;s form — so there are no answers, no cover letter and no tailored CV
+                on this application. This page will fill in once it has. Nothing can be submitted before
+                then, and an empty card is never something to approve.
               </p>
             )}
 
@@ -540,11 +568,13 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
               <button
                 type="button"
                 onClick={approve}
-                disabled={pending || requiredGaps > 0 || app.jobClosed}
+                disabled={pending || notResolvedYet || requiredGaps > 0 || app.jobClosed}
                 className={btnLime}
                 title={
                   app.jobClosed
                     ? "This posting has closed — there is nothing left to submit to"
+                    : notResolvedYet
+                    ? "The employer's form hasn't been read yet — there is nothing to send"
                     : requiredGaps > 0
                       ? `Still needed: ${[...openRequired.map((f) => f.label), ...(coverLetterMissing ? ["Cover letter"] : [])]
                           .slice(0, 3)
