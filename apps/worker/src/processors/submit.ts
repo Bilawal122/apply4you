@@ -252,6 +252,21 @@ async function submitApplication(applicationId: string): Promise<void> {
     await notifyFailed(app.user_id, { title: jobRow.title, company: jobRow.company }, reason);
   };
 
+  // Last line of defence: never open a real employer's form with nothing to
+  // type into it.
+  //
+  // approveOne refuses an unresolved application now, but this worker also
+  // consumes rows nothing in the web app just approved — reenqueueApprovedApplications()
+  // re-enqueues every `approved` row on boot, including ones approved by an
+  // older build. An empty schema here means the fill loop would iterate zero
+  // fields and the adapter would still click submit, sending a blank
+  // application under the candidate's name. That is the single worst thing
+  // this system can do, so it fails loudly instead.
+  if (fields.length === 0) {
+    await fail("not_resolved", "the employer's form was never read — nothing to submit");
+    return;
+  }
+
   // Resume file comes from Storage; Playwright needs it on disk.
   const { data: profileRow } = await db
     .from("profiles")
