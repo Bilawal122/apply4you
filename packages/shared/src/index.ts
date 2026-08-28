@@ -10,4 +10,5 @@ export * from "./grounding.js";
 export * from "./taxonomy.js";
 export * from "./review-metrics.js";
 export * from "./matching.js";
+export * from "./uk.js";
 export * from "./constants.js";
