@@ -5,6 +5,7 @@ import type { AtsType, NormalizedJob } from "@apply4you/shared";
 import { queues, workerConnection } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
 import { refreshSponsorRegister } from "./sponsor-register.js";
+import { enqueueMissingJobEmbeddings } from "./embed.js";
 
 interface BoardSourceRow {
   id: string;
@@ -143,6 +144,12 @@ async function pollAll(): Promise<void> {
     );
   }
   console.log(`[sourcing] fanned out ${sources?.length ?? 0} board polls`);
+
+  // A job is only ever enqueued for embedding by the poll that first stored it,
+  // so an enqueue lost to a Redis outage is lost for good and the job becomes
+  // permanently unmatchable. Repair pass here rather than only at boot: a
+  // long-lived worker that flapped would otherwise carry the gap indefinitely.
+  await enqueueMissingJobEmbeddings();
 }
 
 async function pollBoard(boardSourceId: string): Promise<void> {

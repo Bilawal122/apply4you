@@ -5,7 +5,7 @@ import { connection, queues } from "./queues.js";
 import { supabaseAdmin } from "./supabase.js";
 import { schedulePolling, scheduleRetention, startSourcingWorker } from "./processors/source-poll.js";
 import { scheduleSponsorRefresh } from "./processors/sponsor-register.js";
-import { enqueueMissingProfileEmbeddings, startEmbeddingWorker, startProfileEmbeddingWorker } from "./processors/embed.js";
+import { enqueueMissingJobEmbeddings, enqueueMissingProfileEmbeddings, startEmbeddingWorker, startProfileEmbeddingWorker } from "./processors/embed.js";
 import { scheduleNightlyMatching, startMatchingWorker } from "./processors/match.js";
 import { startResolveWorker } from "./processors/resolve.js";
 import { startSubmitWorkers } from "./processors/submit.js";
@@ -188,6 +188,7 @@ async function main(): Promise<void> {
   await reconcileStuckSubmissions();
   await reenqueueApprovedApplications();
   await enqueueMissingProfileEmbeddings();
+  await enqueueMissingJobEmbeddings();
   await reenqueueStrandedDrafts();
 
   await schedulePolling();
