@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { currentUsagePeriod } from "@apply4you/shared";
+import { FEED_MAX_AGE_DAYS, currentUsagePeriod, isStaleJob, jobAgeDays } from "@apply4you/shared";
 import { createClient } from "@/lib/supabase/server";
 import { descriptionExcerpt } from "@/lib/text";
 import { formatSalary } from "@/lib/salary";
@@ -32,6 +32,8 @@ interface MatchRow {
     salary_period: string | null;
     salary_summary: string | null;
     sponsor_verdict: SponsorVerdict | null;
+    first_seen_at: string;
+    board_sources: { last_polled_at: string | null } | null;
   };
 }
 
@@ -42,6 +44,7 @@ interface FeedParams {
   remote?: string;
   sponsored?: string;
   location?: string;
+  old?: string;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -56,8 +59,19 @@ function postedLabel(postedAt: string | null): string | null {
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
+/** "checked 2h ago" from the board's last successful poll — the liveness signal. */
+function checkedLabel(lastPolledAt: string | null | undefined): string | null {
+  if (!lastPolledAt) return null;
+  const ms = Date.now() - new Date(lastPolledAt).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const hours = Math.floor(ms / 3_600_000);
+  if (hours < 1) return "checked <1h ago";
+  if (hours < 48) return `checked ${hours}h ago`;
+  return `checked ${Math.floor(hours / 24)}d ago`;
+}
+
 export default async function FeedPage({ searchParams }: { searchParams: Promise<FeedParams> }) {
-  const { q, ats, minScore, remote, sponsored, location } = await searchParams;
+  const { q, ats, minScore, remote, sponsored, location, old } = await searchParams;
   const supabase = await createClient();
 
   // Descriptions average ~8KB (Greenhouse stores full HTML), so they are NOT
@@ -66,7 +80,7 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
   let query = supabase
     .from("job_matches")
     .select(
-      "score, reason, jobs!inner(id, title, company, location, apply_url, ats_type, posted_at, requires_login, sponsor_verdict, salary_min, salary_max, salary_currency, salary_period, salary_summary)",
+      "score, reason, jobs!inner(id, title, company, location, apply_url, ats_type, posted_at, first_seen_at, requires_login, sponsor_verdict, salary_min, salary_max, salary_currency, salary_period, salary_summary, board_sources(last_polled_at))",
     )
     .is("jobs.closed_at", null)
     .order("score", { ascending: false })
@@ -81,7 +95,10 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
     const safeLocation = location.replace(/[,()*\\%:"]/g, "").slice(0, 60).trim();
     if (safeLocation) query = query.ilike("jobs.location", `%${safeLocation}%`);
   }
-  if (sponsored === "1") query = query.not("jobs.sponsor_verdict", "is", null);
+  // Explicit licensed check, not "any verdict": today the register writer only
+  // produces licensed:true or NULL, but that is a data-shape coincidence this
+  // filter must not depend on (TESTING.md flags exactly this).
+  if (sponsored === "1") query = query.eq("jobs.sponsor_verdict->>licensed", "true");
   if (q) {
     // Strip characters significant to PostgREST filter syntax so user input
     // can't break out of the ilike pattern and inject OR conditions.
@@ -110,8 +127,27 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
 
   const applied = new Set((appliedRows ?? []).map((r) => r.job_id as string));
   // `q` filters the embedded jobs to null rows on non-matches with !inner; drop those.
-  const available = (matchRows ?? []).filter((m) => m.jobs && !applied.has(m.jobs.id));
+  const allAvailable = (matchRows ?? []).filter((m) => m.jobs && !applied.has(m.jobs.id));
+
+  // Freshness policy (P1-02): roles past FEED_MAX_AGE_DAYS are hidden by
+  // default — an old posting is likely filled, and reviewing it wastes the
+  // user's time. Explicit opt-in shows them, clearly dated.
+  const includeOld = old === "1";
+  const isOld = (m: MatchRow) =>
+    (jobAgeDays(m.jobs.posted_at, m.jobs.first_seen_at) ?? 0) > FEED_MAX_AGE_DAYS;
+  const hiddenOld = includeOld ? 0 : allAvailable.filter(isOld).length;
+  const available = includeOld ? allAvailable : allAvailable.filter((m) => !isOld(m));
   const matches = available.slice(0, CARDS_SHOWN);
+
+  // Preserves the other filters when toggling the age gate.
+  const ageToggleHref = (() => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries({ q, ats, minScore, remote, sponsored, location }))
+      if (v) params.set(k, v);
+    if (!includeOld) params.set("old", "1");
+    const qs = params.toString();
+    return qs ? `/feed?${qs}` : "/feed";
+  })();
 
   // Second query, scoped to the visible rows only — see the note above.
   const descriptions = new Map<string, string>();
@@ -214,6 +250,22 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
           <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
             <p className="label-mono">
               showing {matches.length} of {available.length}
+              {hiddenOld > 0 && (
+                <>
+                  {" · "}
+                  <Link href={ageToggleHref} className="underline underline-offset-2">
+                    {hiddenOld} older than {FEED_MAX_AGE_DAYS}d hidden
+                  </Link>
+                </>
+              )}
+              {includeOld && (
+                <>
+                  {" · "}
+                  <Link href={ageToggleHref} className="underline underline-offset-2">
+                    hide older roles
+                  </Link>
+                </>
+              )}
             </p>
             <p className="label-mono">sorted by fit</p>
           </div>
@@ -222,7 +274,11 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
               by a hairline rather than by whitespace between cards. */}
           <ul className={`${cardCls} px-5 py-1 sm:px-7`}>
             {matches.map((m) => {
-              const posted = postedLabel(m.jobs.posted_at);
+              // Never dateless: posted_at is nullable across all four ATSs,
+              // first_seen_at is not null by schema.
+              const posted = postedLabel(m.jobs.posted_at) ?? `seen ${postedLabel(m.jobs.first_seen_at)}`;
+              const stale = isStaleJob(m.jobs.posted_at, m.jobs.first_seen_at);
+              const checked = checkedLabel(m.jobs.board_sources?.last_polled_at);
               const salary = formatSalary(m.jobs);
               // Our own rationale outranks the employer's boilerplate; the
               // excerpt only takes the line when there is no reason to show.
@@ -259,9 +315,15 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
                   </div>
 
                   <div className="col-span-2 flex flex-wrap items-center gap-x-3 gap-y-2 md:col-span-1 md:flex-nowrap md:justify-end">
-                    <SponsorBadge verdict={m.jobs.sponsor_verdict} />
+                    <SponsorBadge verdict={m.jobs.sponsor_verdict} location={m.jobs.location} />
                     {m.jobs.requires_login && <Chip>account needed</Chip>}
-                    <span className="font-mono text-[12px] text-ink-soft">{posted ?? m.jobs.ats_type}</span>
+                    <span
+                      className={`font-mono text-[12px] ${stale ? "text-attention" : "text-ink-soft"}`}
+                      title={`${stale ? "Posted a while ago — it may already be filled. " : ""}${checked ? `Board ${checked}.` : ""}`}
+                    >
+                      {posted}
+                      {checked && <span className="text-ink-faint"> · {checked}</span>}
+                    </span>
                     <QueueButton jobId={m.jobs.id} />
                   </div>
                 </li>

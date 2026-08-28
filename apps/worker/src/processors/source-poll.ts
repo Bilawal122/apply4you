@@ -20,6 +20,10 @@ type PollBoardData = { boardSourceId: string };
 const MAX_CONSECUTIVE_FAILURES = 3;
 /** Cap per-new-job enrichment (Workable detail fetches) per poll to bound request volume. */
 const MAX_ENRICH_PER_POLL = 50;
+/** A board unpolled this long can no longer vouch for its jobs being open. */
+const STALE_BOARD_DAYS = 7;
+/** Bound the orphan sweep per cycle; the 2h cadence drains any backlog. */
+const SWEEP_CLOSE_CAP = 2000;
 
 /*
  * Everything below is bounded because PostgREST runs as `authenticator` with a
@@ -127,6 +131,71 @@ async function purgeClosedJobs(): Promise<void> {
   console.log(`[retention] purged ${data ?? 0} closed jobs (>30d old, never applied to)`);
 }
 
+/** Close open jobs by id, in write-sized batches. */
+async function closeJobsByIds(ids: string[]): Promise<void> {
+  const db = supabaseAdmin();
+  for (const batch of chunk(ids, UPSERT_CHUNK)) {
+    const { error } = await db
+      .from("jobs")
+      .update({ closed_at: new Date().toISOString() })
+      .in("id", batch);
+    if (error) throw new Error(`closing jobs failed: ${error.message}`);
+  }
+}
+
+/**
+ * The dead-board leak (P1-02): pollBoard's vanished-diff only runs on boards
+ * that still get polled. A board that 404s or fails three times is set
+ * active=false and drops out of the fan-out — historically WITHOUT closing
+ * its open jobs, which then stayed in matching and the feed forever (this is
+ * how a June-2025 role survived into an August-2026 feed). pollBoard now
+ * closes on deactivation; this sweep also runs every cycle to clean rows
+ * stranded historically, by board deletion (FK sets board_source_id null),
+ * or by a board that has simply not completed a poll in STALE_BOARD_DAYS.
+ * Repair pass: it logs and returns rather than failing the poll cycle.
+ */
+async function closeOrphanedJobs(): Promise<void> {
+  const db = supabaseAdmin();
+  try {
+    const toClose: string[] = [];
+
+    const { data: strandedRows, error: strandedError } = await db
+      .from("jobs")
+      .select("id")
+      .is("board_source_id", null)
+      .is("closed_at", null)
+      .limit(SWEEP_CLOSE_CAP);
+    if (strandedError) throw new Error(strandedError.message);
+    toClose.push(...((strandedRows ?? []) as { id: string }[]).map((r) => r.id));
+
+    const cutoff = new Date(Date.now() - STALE_BOARD_DAYS * 86_400_000).toISOString();
+    const { data: deadBoards, error: boardsError } = await db
+      .from("board_sources")
+      .select("id")
+      .or(`active.eq.false,last_polled_at.lt.${cutoff}`);
+    if (boardsError) throw new Error(boardsError.message);
+
+    for (const ids of chunk(((deadBoards ?? []) as { id: string }[]).map((b) => b.id), ID_CHUNK)) {
+      if (toClose.length >= SWEEP_CLOSE_CAP) break;
+      const { data: rows, error } = await db
+        .from("jobs")
+        .select("id")
+        .in("board_source_id", ids)
+        .is("closed_at", null)
+        .limit(SWEEP_CLOSE_CAP - toClose.length);
+      if (error) throw new Error(error.message);
+      toClose.push(...((rows ?? []) as { id: string }[]).map((r) => r.id));
+    }
+
+    if (toClose.length > 0) {
+      await closeJobsByIds(toClose);
+      console.log(`[sourcing] closed ${toClose.length} orphaned job(s) from dead/stale boards`);
+    }
+  } catch (err) {
+    console.error("[sourcing] orphan sweep failed:", err instanceof Error ? err.message : err);
+  }
+}
+
 async function pollAll(): Promise<void> {
   const db = supabaseAdmin();
   const { data: sources, error } = await db
@@ -150,6 +219,8 @@ async function pollAll(): Promise<void> {
   // permanently unmatchable. Repair pass here rather than only at boot: a
   // long-lived worker that flapped would otherwise carry the gap indefinitely.
   await enqueueMissingJobEmbeddings();
+
+  await closeOrphanedJobs();
 }
 
 async function pollBoard(boardSourceId: string): Promise<void> {
@@ -168,16 +239,35 @@ async function pollBoard(boardSourceId: string): Promise<void> {
   } catch (err) {
     const status = err instanceof AtsHttpError ? err.status : null;
     const failures = source.consecutive_failures + 1;
+    // 404 = board gone; repeated errors = deactivate to stop wasting polls.
+    const stillActive = status === 404 ? false : failures < MAX_CONSECUTIVE_FAILURES;
     await db
       .from("board_sources")
       .update({
         last_polled_at: new Date().toISOString(),
         last_status: status === 404 ? "not_found" : "error",
         consecutive_failures: failures,
-        // 404 = board gone; repeated errors = deactivate to stop wasting polls.
-        active: status === 404 ? false : failures < MAX_CONSECUTIVE_FAILURES,
+        active: stillActive,
       })
       .eq("id", source.id);
+    // A deactivated board drops out of the fan-out, so its vanished-diff will
+    // never run again — close its jobs now or they stay open forever (P1-02).
+    // Best-effort: the poll failure being reported must not be masked.
+    if (!stillActive) {
+      try {
+        const { data: openRows } = await db
+          .from("jobs")
+          .select("id")
+          .eq("board_source_id", source.id)
+          .is("closed_at", null);
+        await closeJobsByIds(((openRows ?? []) as { id: string }[]).map((r) => r.id));
+      } catch (closeErr) {
+        console.error(
+          `[sourcing] failed to close jobs of deactivated board ${source.slug}:`,
+          closeErr instanceof Error ? closeErr.message : closeErr,
+        );
+      }
+    }
     throw err;
   }
 

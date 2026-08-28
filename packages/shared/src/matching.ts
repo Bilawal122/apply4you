@@ -11,6 +11,8 @@
  * lives here, and each caller supplies only its own database access.
  */
 
+import { ukSponsorRelevant } from "./uk.js";
+
 /** How many matches a run writes. */
 export const MATCH_LIMIT = 100;
 
@@ -44,6 +46,45 @@ export const SPONSOR_BOOST = 15;
  * the pool, and this decides where they sit.
  */
 export const LOCATION_BOOST = 12;
+
+/**
+ * Freshness policy (P1-02). Board presence used to be the only liveness
+ * signal, which let a June-2025 posting sit in an August-2026 feed at full
+ * rank. Age now demotes: postings older than STALE_AFTER_DAYS lose
+ * STALE_PENALTY in ranking, and the feed hides anything past
+ * FEED_MAX_AGE_DAYS behind an explicit "include older roles" toggle.
+ * Anchored on posted_at, falling back to first_seen_at (posted_at is
+ * nullable across all four ATSs; first_seen_at is not null by schema).
+ */
+export const STALE_AFTER_DAYS = 45;
+export const FEED_MAX_AGE_DAYS = 90;
+/**
+ * Between TITLE_BOOST and LOCATION_BOOST: an old posting is likely filled,
+ * but ATS date fields are inconsistent enough that age must not be able to
+ * bury a strong fit outright.
+ */
+export const STALE_PENALTY = 10;
+
+export function jobAgeDays(
+  postedAt: string | null | undefined,
+  firstSeenAt: string | null | undefined,
+  now: number = Date.now(),
+): number | null {
+  const anchor = postedAt ?? firstSeenAt;
+  if (!anchor) return null;
+  const t = new Date(anchor).getTime();
+  if (!Number.isFinite(t)) return null;
+  return Math.floor((now - t) / 86_400_000);
+}
+
+export function isStaleJob(
+  postedAt: string | null | undefined,
+  firstSeenAt: string | null | undefined,
+  now: number = Date.now(),
+): boolean {
+  const age = jobAgeDays(postedAt, firstSeenAt, now);
+  return age !== null && age > STALE_AFTER_DAYS;
+}
 
 /**
  * Whether a job's location mentions one of the user's preferred locations.
@@ -91,19 +132,31 @@ export function rankMatches<
     title: string;
     sponsorLicensed?: boolean;
     location?: string | null;
+    postedAt?: string | null;
+    firstSeenAt?: string | null;
   },
 >(
   candidates: T[],
   prefs: { titles: string[]; locations?: string[]; needsSponsorship?: boolean },
 ): { jobId: string; score: number }[] {
   return candidates
-    .map(({ jobId, score, title, sponsorLicensed, location }) => {
+    .map(({ jobId, score, title, sponsorLicensed, location, postedAt, firstSeenAt }) => {
       const titleBoost = titleMatches(prefs.titles, title) ? TITLE_BOOST : 0;
-      const sponsorBoost = prefs.needsSponsorship && sponsorLicensed ? SPONSOR_BOOST : 0;
+      // A UK licence only helps where UK sponsorship can apply: a licensed
+      // multinational's Warsaw role must not outrank a licensed London one
+      // for a visa-dependent user (P1-01).
+      const sponsorBoost =
+        prefs.needsSponsorship && sponsorLicensed && ukSponsorRelevant(location ?? null)
+          ? SPONSOR_BOOST
+          : 0;
       const locationBoost = locationMatches(prefs.locations ?? [], location ?? null)
         ? LOCATION_BOOST
         : 0;
-      return { jobId, score: Math.min(100, score + titleBoost + sponsorBoost + locationBoost) };
+      const stalePenalty = isStaleJob(postedAt ?? null, firstSeenAt ?? null) ? STALE_PENALTY : 0;
+      return {
+        jobId,
+        score: Math.max(0, Math.min(100, score + titleBoost + sponsorBoost + locationBoost - stalePenalty)),
+      };
     })
     .sort((a, b) => b.score - a.score);
 }

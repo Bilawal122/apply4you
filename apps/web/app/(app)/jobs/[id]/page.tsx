@@ -11,8 +11,10 @@ import {
   btnLink,
   cardCls,
 } from "@/components/ui";
+import { isStaleJob } from "@apply4you/shared";
 import { REGISTER_URL, type SponsorVerdict } from "@/lib/sponsors";
 import { formatSalary, salaryExtras } from "@/lib/salary";
+import { plainDescription } from "@/lib/text";
 
 interface JobDetail {
   id: string;
@@ -30,9 +32,22 @@ interface JobDetail {
   salary_period: string | null;
   salary_summary: string | null;
   sponsor_verdict: SponsorVerdict | null;
+  first_seen_at: string;
+  board_sources: { last_polled_at: string | null } | null;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "checked 2h ago" from the board's last successful poll — the liveness signal. */
+function checkedLabel(lastPolledAt: string | null | undefined): string | null {
+  if (!lastPolledAt) return null;
+  const ms = Date.now() - new Date(lastPolledAt).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const hours = Math.floor(ms / 3_600_000);
+  if (hours < 1) return "checked <1h ago";
+  if (hours < 48) return `checked ${hours}h ago`;
+  return `checked ${Math.floor(hours / 24)}d ago`;
+}
 
 /** Posted date in UTC, so the string a server renders never depends on the box. */
 function postedLabel(postedAt: string | null): string | null {
@@ -71,7 +86,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const [{ data: job }, { data: match }, { data: application }] = await Promise.all([
     supabase
       .from("jobs")
-      .select("id, title, company, location, description, apply_url, ats_type, posted_at, closed_at, sponsor_verdict, salary_min, salary_max, salary_currency, salary_period, salary_summary")
+      .select("id, title, company, location, description, apply_url, ats_type, posted_at, first_seen_at, closed_at, sponsor_verdict, salary_min, salary_max, salary_currency, salary_period, salary_summary, board_sources(last_polled_at)")
       .eq("id", id)
       .single<JobDetail>(),
     supabase.from("job_matches").select("score, reason").eq("job_id", id).maybeSingle<{ score: number; reason: string | null }>(),
@@ -83,6 +98,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const salary = formatSalary(job);
   const extras = salaryExtras(job);
   const posted = postedLabel(job.posted_at);
+  const stale = isStaleJob(job.posted_at, job.first_seen_at);
+  const checked = checkedLabel(job.board_sources?.last_polled_at);
 
   return (
     <div>
@@ -121,10 +138,29 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
                 {posted && (
                   <>
                     {" · "}
-                    <span className="font-mono text-[13.5px]">posted {posted}</span>
+                    <span className={`font-mono text-[13.5px] ${stale ? "text-attention" : ""}`}>
+                      posted {posted}
+                    </span>
+                  </>
+                )}
+                {checked && (
+                  <>
+                    {" · "}
+                    <span
+                      className="font-mono text-[13.5px] text-ink-faint"
+                      title="When this company's board was last successfully synced. The posting was open on that check."
+                    >
+                      {checked}
+                    </span>
                   </>
                 )}
               </p>
+              {stale && !job.closed_at && (
+                <p className="mt-1.5 text-[13px] leading-[1.55] text-attention">
+                  Posted a while ago — the role was still listed on the last board check, but older
+                  postings are more likely to be filled already.
+                </p>
+              )}
 
               {/*
                 Pay provenance, kept from the old page. Greenhouse and Workable
@@ -146,7 +182,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
             queued, so this page has no such data and invents none.
           */}
           <div className="mt-5 flex flex-wrap items-center gap-2">
-            <SponsorBadge verdict={job.sponsor_verdict} />
+            <SponsorBadge verdict={job.sponsor_verdict} location={job.location} />
             <Chip>{job.ats_type}</Chip>
             {job.closed_at && (
               <span className="inline-flex shrink-0 items-center rounded-md bg-danger-soft px-2.5 py-1.5 font-mono text-[11.5px] leading-none text-danger">
@@ -160,7 +196,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
           <h2 className="label-mono mt-6">Job description</h2>
           {job.description ? (
             <div className="mt-3 break-words whitespace-pre-wrap text-[16px] leading-[1.65] text-ink-body">
-              {job.description}
+              {plainDescription(job.description)}
             </div>
           ) : (
             <p className="mt-3 text-[15px] leading-[1.6] text-ink-body">

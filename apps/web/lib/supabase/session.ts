@@ -38,7 +38,11 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith("/check") || // public sponsor-licence checker
     pathname.startsWith("/api/health") || // liveness, readable when signed out
     pathname.startsWith("/privacy") ||
-    pathname.startsWith("/terms");
+    pathname.startsWith("/terms") ||
+    // Crawler files — also excluded from the proxy matcher; this is
+    // belt-and-braces in case the matcher changes.
+    pathname === "/robots.txt" ||
+    pathname === "/sitemap.xml";
   // /update-password is intentionally NOT public: the recovery link creates a
   // session, so only link-holders (or signed-in users) reach it.
 

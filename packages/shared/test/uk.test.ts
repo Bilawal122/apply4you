@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { byUkFirst, isUkLocation } from "../src/uk.js";
+import { byUkFirst, isUkLocation, ukSponsorRelevant } from "../src/uk.js";
 
 describe("isUkLocation", () => {
   it("accepts explicit country markers in the shapes the ATSs actually write", () => {
@@ -89,5 +89,43 @@ describe("byUkFirst", () => {
   it("is a no-op when nothing is UK", () => {
     const jobs = [{ location: "Berlin" }, { location: "Paris" }];
     expect([...jobs].sort(byUkFirst(locOf))).toEqual(jobs);
+  });
+});
+
+describe("ukSponsorRelevant", () => {
+  it("is relevant for UK locations", () => {
+    for (const s of ["London, UK", "Manchester, United Kingdom", "Leeds", "Edinburgh, Scotland"]) {
+      expect(ukSponsorRelevant(s), s).toBe(true);
+    }
+  });
+
+  it("is relevant when the location is unknown — absence is not evidence", () => {
+    expect(ukSponsorRelevant(null)).toBe(true);
+    expect(ukSponsorRelevant(undefined)).toBe(true);
+    expect(ukSponsorRelevant("   ")).toBe(true);
+  });
+
+  it("stays relevant for working-mode strings with no placing marker", () => {
+    for (const s of ["Remote", "Hybrid", "Remote — EMEA", "Flexible / Remote", "Remote, Europe"]) {
+      expect(ukSponsorRelevant(s), s).toBe(true);
+    }
+  });
+
+  it("is NOT relevant for the exact shapes the audit caught: non-UK roles at licensed employers", () => {
+    for (const s of ["Warsaw, Poland", "Madrid, Spain", "Poland", "Barcelona", "Kraków, Poland".normalize()]) {
+      expect(ukSponsorRelevant(s), s).toBe(false);
+    }
+  });
+
+  it("is NOT relevant for a remote role explicitly placed elsewhere", () => {
+    for (const s of ["Remote - US", "Remote — Poland", "Remote (Germany)", "Remote, Canada"]) {
+      expect(ukSponsorRelevant(s), s).toBe(false);
+    }
+  });
+
+  it("is NOT relevant for concrete places it cannot recognise as UK (cautious direction)", () => {
+    for (const s of ["Paris", "Berlin", "New York, NY", "Tokyo", "Springfield"]) {
+      expect(ukSponsorRelevant(s), s).toBe(false);
+    }
   });
 });

@@ -39,6 +39,10 @@ export interface ReviewApp {
   answerSources: Record<string, string>;
   /** The posting vanished from its board after this was queued. */
   jobClosed: boolean;
+  /** "3h" / "2d" since queueing, computed server-side, for honest waiting labels. */
+  queuedAgo: string | null;
+  /** Whether a worker heartbeat was fresh when the page rendered (P0-01). */
+  workerAlive: boolean;
 }
 
 function isCoverLetterField(f: Field): boolean {
@@ -303,6 +307,10 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
    * "not ready yet", never "nothing to fill in".
    */
   const notResolvedYet = app.formSchema.length === 0;
+  // Honest waiting copy: "still filling out" was shown identically for a
+  // 30-second-old live resolve and a 3-day-old row nothing was processing.
+  const queuedAgo = app.queuedAgo;
+  const waitingOnWorker = notResolvedYet && !app.workerAlive;
 
   const payload = (): ResolvedValues =>
     clField ? { ...values, [clField.id]: coverLetter || null } : values;
@@ -378,9 +386,13 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
               <span className="rounded-full bg-danger-soft px-3.5 py-2 font-mono text-[11.5px] leading-none text-danger">
                 posting closed
               </span>
+            ) : waitingOnWorker ? (
+              <span className="rounded-full bg-attention-soft px-3.5 py-2 font-mono text-[11.5px] leading-none text-attention">
+                waiting for the worker{queuedAgo ? ` · queued ${queuedAgo} ago` : ""}
+              </span>
             ) : notResolvedYet ? (
               <span className="rounded-full bg-paper-tint px-3.5 py-2 font-mono text-[11.5px] leading-none text-ink-soft">
-                still filling out
+                still filling out{queuedAgo ? ` · queued ${queuedAgo} ago` : ""}
               </span>
             ) : requiredGaps > 0 ? (
               <span className="rounded-full bg-attention-mid px-3.5 py-2 font-mono text-[11.5px] leading-none text-attention">
@@ -413,8 +425,11 @@ export function ApplicationReview({ app }: { app: ReviewApp }) {
               <p className="mb-5 rounded-xl bg-paper-tint px-4 py-3.5 text-[14px] leading-[1.6] text-ink-body">
                 <span className="font-semibold text-ink">Nothing to review yet.</span> The AI hasn&apos;t
                 read this employer&apos;s form — so there are no answers, no cover letter and no tailored CV
-                on this application. This page will fill in once it has. Nothing can be submitted before
-                then, and an empty card is never something to approve.
+                on this application.{" "}
+                {waitingOnWorker
+                  ? "Right now nothing is processing (the worker is offline), so it is waiting — it will fill automatically when processing is back."
+                  : "This page will fill in once it has."}{" "}
+                Nothing can be submitted before then, and an empty card is never something to approve.
               </p>
             )}
 

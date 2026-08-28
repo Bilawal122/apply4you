@@ -135,3 +135,35 @@ export const FILLABLE_FIELD_TYPES = new Set<string>([
   "number",
   "file",
 ]);
+
+/**
+ * Support / data-request contact. Env-overridable so a mailbox change is a
+ * deploy, not a code change; the default matches the NOTIFY_FROM_EMAIL
+ * domain. Published on /privacy and /terms and in the sourcing User-Agent,
+ * so it must be a real, monitored mailbox before launch (see
+ * PRODUCTION-READINESS.md P1-06).
+ */
+export const SUPPORT_EMAIL: string =
+  process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? process.env.SUPPORT_EMAIL ?? "support@apply4you.app";
+
+/**
+ * Worker heartbeat (P0-01/P1-04). The worker refreshes this Redis key every
+ * WORKER_HEARTBEAT_INTERVAL_MS with a TTL of WORKER_HEARTBEAT_TTL_SECONDS;
+ * the web app reads it to distinguish "Redis reachable" from "worker actually
+ * processing" — the incident shape that used to look green. A beat older than
+ * WORKER_HEARTBEAT_STALE_MS (or an expired key) means nothing is consuming.
+ */
+export const WORKER_HEARTBEAT_KEY = "apply4you:worker:heartbeat";
+export const WORKER_HEARTBEAT_INTERVAL_MS = 60_000;
+export const WORKER_HEARTBEAT_TTL_SECONDS = 180;
+export const WORKER_HEARTBEAT_STALE_MS = 3 * 60_000;
+
+/**
+ * Backstop for a draft the resolve pipeline could not fill even though the
+ * worker is alive (P0-01): stranded-draft re-enqueue runs every 5 minutes and
+ * each resolve gets 3 attempts, so a row still unfilled after this long is
+ * genuinely wedged and is failed with a reason instead of reading "still
+ * filling out" forever. Worker-down drafts are deliberately NOT failed — they
+ * self-heal via re-enqueue when the worker returns, and the UI says so.
+ */
+export const DRAFT_ABANDONED_MS = 24 * 60 * 60 * 1000;

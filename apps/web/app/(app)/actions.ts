@@ -2,11 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { LIBRARY_QUESTIONS, ProfileSchema, PreferencesSchema } from "@apply4you/shared";
+import {
+  FEED_MAX_AGE_DAYS,
+  LIBRARY_QUESTIONS,
+  PreferencesSchema,
+  ProfileSchema,
+  jobAgeDays,
+  ukSponsorRelevant,
+} from "@apply4you/shared";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { profileToRow, preferencesToRow } from "@/lib/profile";
-import { enqueueProfileEmbedding, enqueueResolve } from "@/lib/queue";
+import { enqueueProfileEmbedding, enqueueResolve, workerHeartbeat } from "@/lib/queue";
 
 export type SaveState = { error: string } | { ok: true } | null;
 
@@ -126,7 +133,9 @@ export async function getMatchingStatus(): Promise<{
 }
 
 /** Feed "Queue top N": bulk-create drafts for the best unapplied matches. */
-export async function queueTopMatches(count: number): Promise<{ queued?: number; error?: string }> {
+export async function queueTopMatches(
+  count: number,
+): Promise<{ queued?: number; filling?: boolean; error?: string }> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -152,7 +161,7 @@ export async function queueTopMatches(count: number): Promise<{ queued?: number;
 
   const { data: matches } = await admin
     .from("job_matches")
-    .select("job_id, jobs!inner(closed_at, company, sponsor_verdict)")
+    .select("job_id, jobs!inner(closed_at, company, location, sponsor_verdict, posted_at, first_seen_at)")
     .eq("user_id", user.id)
     .is("jobs.closed_at", null)
     .order("score", { ascending: false })
@@ -166,9 +175,22 @@ export async function queueTopMatches(count: number): Promise<{ queued?: number;
   // complaint and the one thing this product exists not to do.
   const targets = (matches ?? [])
     .filter((m) => {
-      const job = m.jobs as unknown as { company: string; sponsor_verdict: { licensed?: boolean } | null };
+      const job = m.jobs as unknown as {
+        company: string;
+        location: string | null;
+        sponsor_verdict: { licensed?: boolean } | null;
+        posted_at: string | null;
+        first_seen_at: string;
+      };
       if (blocklist.has(job.company.trim().toLowerCase())) return false;
       if (needsSponsorship && job.sponsor_verdict?.licensed !== true) return false;
+      // A UK licence is irrelevant to a recognisably non-UK role — spending
+      // the user's budget on a Warsaw posting because the company holds a UK
+      // licence is exactly the P1-01 failure.
+      if (needsSponsorship && !ukSponsorRelevant(job.location)) return false;
+      // Same age gate as the default feed: this function spends budget
+      // unattended, and a months-old posting is likely already filled.
+      if ((jobAgeDays(job.posted_at, job.first_seen_at) ?? 0) > FEED_MAX_AGE_DAYS) return false;
       return true;
     })
     .map((m: { job_id: string }) => m.job_id)
@@ -184,6 +206,13 @@ export async function queueTopMatches(count: number): Promise<{ queued?: number;
     };
   }
 
+  // The event copy states only what is true RIGHT NOW: "AI is filling" needs
+  // a live consumer, and a Redis PONG is not one (P0-01).
+  const filling = (await workerHeartbeat()).alive;
+  const queuedMessage = filling
+    ? "Queued — AI is filling out the application"
+    : "Queued — will be filled when the worker is back online";
+
   let queued = 0;
   let stranded = 0;
   for (const jobId of targets) {
@@ -197,7 +226,7 @@ export async function queueTopMatches(count: number): Promise<{ queued?: number;
       application_id: app.id,
       user_id: user.id,
       status: "draft",
-      message: "Queued — AI is filling out the application",
+      message: queuedMessage,
     });
     // Counted only when the enqueue actually landed. The old comment here said
     // "Worker picks it up when the queue is reachable again" — that is true of
@@ -221,12 +250,13 @@ export async function queueTopMatches(count: number): Promise<{ queued?: number;
   if (stranded > 0) {
     return {
       queued,
+      filling,
       error:
         `${stranded} of ${queued + stranded} couldn't reach the worker queue and are waiting — ` +
         `they'll start filling when the worker is back.`,
     };
   }
-  return { queued };
+  return { queued, filling };
 }
 
 /** Feed "Queue application": create a draft and hand it to the resolve worker. */
@@ -266,7 +296,9 @@ export async function queueApplication(jobId: string): Promise<{ error?: string 
     application_id: app.id,
     user_id: user.id,
     status: "draft",
-    message: "Queued — AI is filling out the application",
+    message: (await workerHeartbeat()).alive
+      ? "Queued — AI is filling out the application"
+      : "Queued — will be filled when the worker is back online",
   });
 
   try {

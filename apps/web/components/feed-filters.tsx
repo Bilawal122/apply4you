@@ -156,7 +156,7 @@ export function FeedFilters() {
 
       <label
         className="relative inline-flex cursor-pointer"
-        title="Employers holding a Home Office sponsor licence (a licence does not guarantee sponsorship for a specific role)"
+        title="Employers holding a UK Home Office sponsor licence. A licence does not guarantee sponsorship for a specific role, and it only applies to UK-based roles — non-UK roles at licensed employers are marked."
       >
         <input
           type="checkbox"

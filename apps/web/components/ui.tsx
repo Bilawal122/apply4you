@@ -12,6 +12,7 @@
 */
 
 import Link from "next/link";
+import { ukSponsorRelevant } from "@apply4you/shared";
 
 /* ── Identity ─────────────────────────────────────────────────────────────
    Three circles: two ink, one lime. It lives here rather than in each page
@@ -197,14 +198,32 @@ export function Chip({ children, className = "" }: { children: React.ReactNode; 
  * Sponsor-licence badge (DECISIONS.md D5 conservative labeling: the employer
  * HOLDS a licence on the register date — never "sponsors this role").
  * Renders nothing when there's no verdict: absence of a match is not a claim.
+ *
+ * Location-aware: a Home Office licence is permission to sponsor workers IN
+ * THE UK, so on a role whose location is recognisably not UK the badge flips
+ * to a neutral caution instead of an eligibility signal. Callers should pass
+ * the job's location wherever they have it; omitting it keeps the old
+ * (licence-only) rendering for surfaces with no location column.
  */
 export function SponsorBadge({
   verdict,
+  location,
 }: {
   verdict: { licensed: boolean; org_name?: string; routes?: string[]; register_date?: string } | null;
+  location?: string | null;
 }) {
   if (!verdict?.licensed) return null;
   const skilledWorker = verdict.routes?.includes("Skilled Worker");
+  if (location !== undefined && !ukSponsorRelevant(location)) {
+    return (
+      <span
+        className={`${chipBase} bg-paper-deep text-ink-soft`}
+        title={`${verdict.org_name ?? "This employer"} holds a UK Home Office sponsor licence, but this role's location (${location}) is outside the UK — the licence does not apply to it.`}
+      >
+        UK licence · non-UK role
+      </span>
+    );
+  }
   return (
     <span
       className={`${chipBase} bg-accent-soft text-accent`}

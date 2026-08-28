@@ -63,6 +63,10 @@ export function AutoApplyButton({
             // would skip the refresh and hide the ones that did start, so the
             // message is shown and the list is refreshed either way.
             if (res.error) setMessage(res.error);
+            else if (res.filling === false)
+              // Truthful when nothing is consuming the queue (P0-01): queued,
+              // safe, and waiting is not the same as "filling now".
+              setMessage(`${res.queued} queued — they'll fill as soon as processing is back online`);
             else setMessage(`${res.queued} started — the AI is filling them now`);
             if (res.queued) router.refresh();
           })

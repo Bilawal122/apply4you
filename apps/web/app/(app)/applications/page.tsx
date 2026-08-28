@@ -8,8 +8,11 @@ import {
 } from "@apply4you/shared";
 import { createClient } from "@/lib/supabase/server";
 import { rowToProfile, type ProfileRow } from "@/lib/profile";
+import { failAbandonedDrafts } from "@/lib/abandoned";
+import { workerHeartbeat } from "@/lib/queue";
 import { ApplicationReview, type ReviewApp } from "@/components/application-review";
 import { ApproveAllButton } from "@/components/approve-all-button";
+import { AutoRefresh } from "@/components/auto-refresh";
 import { LiveFeed } from "@/components/live-feed";
 import { StatusBadge, cardCls } from "@/components/ui";
 
@@ -32,6 +35,15 @@ interface AppRow {
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "3h" / "2d" since queueing — server-computed so client render stays pure. */
+function queuedAgoLabel(createdAt: string): string | null {
+  const ms = Date.now() - new Date(createdAt).getTime();
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  if (ms < 3_600_000) return `${Math.max(1, Math.floor(ms / 60_000))}m`;
+  if (ms < 86_400_000) return `${Math.floor(ms / 3_600_000)}h`;
+  return `${Math.floor(ms / 86_400_000)}d`;
+}
 
 /**
  * The sent date, in UTC so the string a server renders never depends on where
@@ -78,6 +90,14 @@ export default async function ApplicationsPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // Is anything actually consuming the queue? Cheap TTL'd-key read; the page
+  // must not claim "filling" while nothing is running (P0-01).
+  const worker = await workerHeartbeat();
+  // With a LIVE worker, a >24h unfilled draft is wedged, not pending — fail it
+  // before the queries below so the page never renders the stale lie. A down
+  // worker's drafts are left to self-heal (see lib/abandoned.ts).
+  if (user && worker.alive) await failAbandonedDrafts(user.id);
+
   const [{ data: pendingRows }, { data: recentRows }, { data: eventRows }, { data: profileRow }] =
     await Promise.all([
       supabase
@@ -118,6 +138,20 @@ export default async function ApplicationsPage() {
   // never promises more than it can send.
   const draftCount = pending.filter((a) => a.status === "draft" && a.jobs.closed_at === null).length;
 
+  // A pending row with no form schema has not been filled — it is waiting on
+  // the worker, not on the user. The headline must not count it as reviewable.
+  const reviewable = pending.filter((a) => (a.form_schema ?? []).length > 0);
+  const preparing = pending.length - reviewable.length;
+  const headline =
+    reviewable.length > 0
+      ? `${reviewable.length} waiting for your approval`
+      : preparing > 0
+        ? `${preparing} queued, being prepared`
+        : "Nothing waiting for you";
+  const lastSeenLabel = worker.lastSeen
+    ? new Date(worker.lastSeen).toLocaleString("en-GB", { timeZone: "UTC", hour12: false }) + " UTC"
+    : "never";
+
   const toReviewApp = (row: AppRow): ReviewApp => ({
     id: row.id,
     status: row.status,
@@ -131,6 +165,8 @@ export default async function ApplicationsPage() {
     tailoredCv: resolveCv(row.tailored_cv),
     answerSources: row.answer_sources ?? {},
     jobClosed: row.jobs.closed_at !== null,
+    queuedAgo: queuedAgoLabel(row.created_at),
+    workerAlive: worker.alive,
   });
 
   // The five columns, shared by the header row and every data row so they can
@@ -146,9 +182,7 @@ export default async function ApplicationsPage() {
             actually stand behind: the pending query is unbounded, while the
             list below it is capped at the most recent 25.
           */}
-          <h1 className="display text-[30px] text-ink sm:text-[34px]">
-            {pending.length > 0 ? `${pending.length} waiting for your approval` : "Nothing waiting for you"}
-          </h1>
+          <h1 className="display text-[30px] text-ink sm:text-[34px]">{headline}</h1>
           <p className="mt-2.5 text-[15.5px] leading-[1.55] text-ink-soft">
             Nothing is submitted without your approval, and every application keeps a receipt: what was sent,
             when it went, and every status it passed through.
@@ -156,6 +190,24 @@ export default async function ApplicationsPage() {
         </div>
         <ApproveAllButton draftCount={draftCount} />
       </div>
+
+      {/* The honest processing state (P0-01): rows waiting on the worker must
+          never be dressed up as progress. While a worker is alive the page
+          polls so resolves appear without a manual reload — Realtime alone
+          can't help here, because a down worker inserts no events. */}
+      {preparing > 0 && <AutoRefresh intervalMs={5000} />}
+      {preparing > 0 && !worker.alive && (
+        <div className="rounded-2xl bg-attention-soft px-5 py-4 text-[14.5px] leading-[1.6]">
+          <span className="font-semibold text-attention">
+            Nothing is being filled right now — the worker is offline
+          </span>{" "}
+          <span className="text-ink-body">
+            (last seen: {lastSeenLabel}). {preparing} queued application{preparing === 1 ? "" : "s"}{" "}
+            {preparing === 1 ? "is" : "are"} safe and will fill automatically as soon as processing is
+            back. No data is lost.
+          </span>
+        </div>
+      )}
 
       {user && <LiveFeed initialEvents={eventRows ?? []} userId={user.id} />}
 

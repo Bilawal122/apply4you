@@ -31,6 +31,9 @@ export function OnboardingMatches() {
   const [embedded, setEmbedded] = useState(false);
   const [matches, setMatches] = useState(0);
   const [queuedCount, setQueuedCount] = useState(0);
+  // Whether a worker was actually consuming when the queue action ran — the
+  // "filling right now" copy must not be shown when nothing is (P0-01).
+  const [filling, setFilling] = useState(true);
   // True when we found applications already in flight instead of queuing new
   // ones (re-onboarding, or the user queued from the feed mid-wizard).
   const [alreadyActive, setAlreadyActive] = useState(false);
@@ -86,6 +89,7 @@ export function OnboardingMatches() {
             // count alone.
             if (res.error) setError(res.error);
             setQueuedCount(res.queued ?? 0);
+            setFilling(res.filling !== false);
             setPhase("done");
           } catch {
             if (cancelled) return;
@@ -150,7 +154,9 @@ export function OnboardingMatches() {
             </p>
           ) : queuedCount > 0 ? (
             <p className="text-[14.5px] leading-[1.6] text-ink-body">
-              We queued the top {queuedCount} and the AI is filling them out from your profile right now.
+              {filling
+                ? `We queued the top ${queuedCount} and the AI is filling them out from your profile right now. `
+                : `We queued the top ${queuedCount} — they're safe, and will fill out from your profile as soon as processing is back online. `}
               Review each one — nothing is submitted without your approval.
             </p>
           ) : (

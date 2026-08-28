@@ -436,7 +436,7 @@ export default async function LandingPage() {
                           </p>
                           {j.sponsor_verdict?.licensed && (
                             <span className="mt-1.5 inline-block">
-                              <SponsorBadge verdict={j.sponsor_verdict} />
+                              <SponsorBadge verdict={j.sponsor_verdict} location={j.location} />
                             </span>
                           )}
                         </div>

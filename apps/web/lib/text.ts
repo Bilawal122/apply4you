@@ -31,6 +31,27 @@ function decodeEntities(s: string): string {
     .replace(/&([a-z]+);/gi, (m, name: string) => ENTITIES[name.toLowerCase()] ?? m);
 }
 
+/**
+ * Full plain-text form of a description for the job-detail page. Newlines are
+ * preserved (the page renders whitespace-pre-wrap). Exists as defense in
+ * depth: ingestion strips HTML, but rows stored before the Greenhouse
+ * escaped-entity fix (see packages/ats/src/html.ts stripEscapedHtml) hold raw
+ * markup until the fix-descriptions backfill runs — and this keeps the page
+ * readable even if an ingestion regression ever recurs. Output is still
+ * rendered as text, never as HTML.
+ */
+export function plainDescription(description: string): string {
+  return decodeEntities(
+    description
+      .replace(/<\s*(br|\/p|\/div|\/li|\/h[1-6]|\/tr)\s*\/?>/gi, "\n")
+      .replace(/<\s*li[^>]*>/gi, "- ")
+      .replace(/<[^>]*>/g, ""),
+  )
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 /** Plain-text excerpt of a job description, or null when there's nothing usable. */
 export function descriptionExcerpt(description: string | null, maxChars = 260): string | null {
   if (!description) return null;

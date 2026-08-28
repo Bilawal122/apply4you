@@ -1,10 +1,11 @@
+import { SUPPORT_EMAIL } from "@apply4you/shared";
 import { LegalShell, LegalSection } from "@/components/legal-shell";
 
 export const metadata = { title: "Privacy Policy — Apply4You" };
 
 export default function PrivacyPage() {
   return (
-    <LegalShell title="Privacy Policy" updated="July 2026">
+    <LegalShell title="Privacy Policy" updated="August 2026">
       <p className="text-[16.5px] leading-[1.65]">
         This policy explains what Apply4You collects, why, and the control you have over it. It is written
         to be read, not to hide behind. If anything here is unclear, email us before you sign up.
@@ -65,7 +66,13 @@ export default function PrivacyPage() {
       </LegalSection>
 
       <LegalSection heading="Contact">
-        <p>Questions or requests about your data: support@apply4you.example.</p>
+        <p>
+          Questions or requests about your data:{" "}
+          <a className="underline" href={`mailto:${SUPPORT_EMAIL}`}>
+            {SUPPORT_EMAIL}
+          </a>
+          .
+        </p>
       </LegalSection>
     </LegalShell>
   );

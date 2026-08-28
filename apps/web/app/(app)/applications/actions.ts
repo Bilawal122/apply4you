@@ -3,18 +3,21 @@
 import { revalidatePath } from "next/cache";
 import {
   PLANS,
-  FILLABLE_FIELD_TYPES,
   isDemographicField,
-  isExcludedFromResolution,
   ReviewMetricsSchema,
   type ReviewMetrics,
   currentUsagePeriod,
   type Field,
   type PlanId,
   type ResolvedValues,
-  type UnresolvedField,
 } from "@apply4you/shared";
 import { resolveFieldsWithLlm, withUsageUser } from "@apply4you/ai";
+import {
+  approvalRefusal,
+  computeUnresolved,
+  mergeFieldEdits,
+  reviewStatusFor,
+} from "@/lib/approval-gate";
 import { createClient } from "@/lib/supabase/server";
 import { rowToProfile, type ProfileRow } from "@/lib/profile";
 import { ensureUsageSink } from "@/lib/ai-usage";
@@ -44,19 +47,9 @@ export async function saveApplicationFields(
   if (!["draft", "needs_review"].includes(app.status)) return { error: "Already approved or submitted" };
 
   const schema = (app.form_schema ?? []) as Field[];
-  const knownIds = new Set(schema.map((f) => f.id));
-  const merged: ResolvedValues = { ...(app.resolved_fields as ResolvedValues) };
-  for (const [id, value] of Object.entries(resolvedFields)) {
-    if (knownIds.has(id)) merged[id] = value === "" ? null : value;
-  }
-
-  // Same predicate the resolver uses (@apply4you/shared). Anything resolution
-  // deliberately skips must not be counted as an unanswered required field
-  // here, or the application becomes permanently unapprovable.
-  const unresolved: UnresolvedField[] = schema
-    .filter((f) => !isExcludedFromResolution(f) && (merged[f.id] ?? null) === null)
-    .map((f) => ({ id: f.id, label: f.label, required: f.required }));
-  const status = unresolved.some((u) => u.required) ? "needs_review" : "draft";
+  const merged = mergeFieldEdits(schema, app.resolved_fields as ResolvedValues, resolvedFields);
+  const unresolved = computeUnresolved(schema, merged);
+  const status = reviewStatusFor(unresolved);
 
   const { error } = await supabase
     .from("applications")
@@ -129,47 +122,15 @@ async function approveOne(userId: string, applicationId: string): Promise<string
     .eq("user_id", userId)
     .single();
   if (!app) return "not found";
-  if (app.status !== "draft") {
-    if (app.status === "needs_review") return "answer the required fields first";
-    return `already ${app.status}`;
-  }
 
-  // The posting can close between queueing and approval. The submit worker
-  // already fails gracefully on a dead form (DECISIONS.md D3), but only after
-  // claiming a daily-cap slot and spending a browser run — and the user has
-  // spent their attention reviewing something that was never going to send.
-  // If the poller has already recorded closed_at, say so now.
-  if ((app.jobs as unknown as { closed_at: string | null }).closed_at) {
-    return "this posting has closed since it was queued — nothing to send, so Skip it";
-  }
-
-  // An application whose form was never read cannot be approved.
-  //
-  // This is the failure every other guard here was blind to, because they all
-  // look FOR something wrong in form_schema — an undrivable field, an
-  // unanswered required one — and a null schema contains nothing to object to.
-  // So a draft the resolver had never touched passed every check, rendered as
-  // "0 of 0 filled · ready to send", and one approval away from opening a real
-  // employer's form and clicking submit with nothing typed into it.
-  //
-  // `null` means the resolve job never ran (queue outage, worker down). An
-  // empty array means it ran and read zero fields, which for a job application
-  // is equally impossible — every real form asks for at least a name. Both are
-  // "not ready", never "nothing needed".
-  const schema = app.form_schema as Field[] | null;
-  if (!schema || schema.length === 0) {
-    return "this application hasn't been filled out yet — the AI still needs to read the employer's form. It'll be ready shortly.";
-  }
-
-  // A required field type the fill layer can't drive (consent checkbox, date
-  // picker, unknown widget) would fail on the employer's validation every
-  // time — refuse the approval instead (DECISIONS.md D3).
-  const undrivable = (schema as Field[]).find(
-    (f) => f.required && !FILLABLE_FIELD_TYPES.has(f.type),
-  );
-  if (undrivable) {
-    return `this form has a required "${undrivable.label.slice(0, 60)}" (${undrivable.type}) we can't fill automatically — apply via the posting link, then Skip this one`;
-  }
+  // The whole gate (status, closed posting, unread form, undrivable required
+  // field) lives in lib/approval-gate.ts so it is directly testable.
+  const refusal = approvalRefusal({
+    status: app.status,
+    jobClosedAt: (app.jobs as unknown as { closed_at: string | null }).closed_at,
+    formSchema: app.form_schema as Field[] | null,
+  });
+  if (refusal) return refusal;
 
   const { data: transitioned } = await admin
     .from("applications")

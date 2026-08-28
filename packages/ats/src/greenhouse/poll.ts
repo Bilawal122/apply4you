@@ -1,6 +1,6 @@
 import type { NormalizedJob } from "@apply4you/shared";
 import { AtsHttpError, fetchJson } from "../fetch.js";
-import { stripHtml } from "../html.js";
+import { stripEscapedHtml } from "../html.js";
 import type { PollOptions } from "../types.js";
 
 /** Shape verified against boards-api.greenhouse.io 2026-07. */
@@ -63,7 +63,7 @@ export async function pollGreenhouse(slug: string, opts?: PollOptions): Promise<
     title: job.title,
     company: job.company_name ?? opts?.companyName ?? slug,
     location: job.location?.name ?? null,
-    description: job.content ? stripHtml(job.content) : "",
+    description: job.content ? stripEscapedHtml(job.content) : "",
     applyUrl: job.absolute_url,
     requiresLogin: false,
     postedAt: job.first_published ?? job.updated_at ?? null,

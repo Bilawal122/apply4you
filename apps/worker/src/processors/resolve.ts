@@ -1,17 +1,15 @@
 import { Worker, type Job } from "bullmq";
 import {
   QUEUES,
-  isDemographicField,
   isExcludedFromResolution,
-  FILLABLE_FIELD_TYPES,
   resolveFromLibrary,
   type Field,
   type ResolvedValues,
-  type UnresolvedField,
   type AtsType,
 } from "@apply4you/shared";
 import { getAdapter, type JobRef } from "@apply4you/ats";
 import { resolveDeterministic, resolveFieldsWithLlm, generateCoverLetter, postValidate, tailorCv, withUsageUser } from "@apply4you/ai";
+import { finalizeResolution } from "../preflight.js";
 import { workerConnection } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
 import { loadProfileAndPrefs } from "../profile-data.js";
@@ -161,33 +159,23 @@ export async function resolveApplication(applicationId: string): Promise<void> {
     console.error(`[resolve] ${applicationId}: tailored CV failed (continuing):`, String(err).slice(0, 200));
   }
 
-  // 6. Unresolved bookkeeping (FR-16).
-  const unresolved: UnresolvedField[] = workable
-    .filter((f) => f.type !== "file" && resolvedFields[f.id] === null)
-    .map((f) => ({ id: f.id, label: f.label, required: f.required }));
-
-  // Pre-flight (DECISIONS.md D3): a required field the fill layer can't
-  // reliably drive (consent checkboxes, date pickers, unknown widgets) or a
-  // required demographic question parks the application for the human — no
-  // best-effort fills on real employers.
-  for (const f of formSchema) {
-    if (!f.required) continue;
-    const unfillable = !FILLABLE_FIELD_TYPES.has(f.type);
-    const requiredDemographic = isDemographicField(f.id, f.label);
-    if ((unfillable || requiredDemographic) && !unresolved.some((u) => u.id === f.id)) {
-      resolvedFields[f.id] = null;
-      unresolved.push({ id: f.id, label: f.label, required: true });
-    }
-  }
-
-  const hasRequiredGap = unresolved.some((u) => u.required);
-  const status = hasRequiredGap ? "needs_review" : "draft";
+  // 6. Unresolved bookkeeping (FR-16) + pre-flight parks (DECISIONS.md D3):
+  //    a required field the fill layer can't reliably drive, or a required
+  //    demographic question, parks the application for the human — no
+  //    best-effort fills on real employers. Extracted to ../preflight.ts so
+  //    the parking rules are tested directly, not just their predicates.
+  const {
+    resolvedFields: finalFields,
+    unresolved,
+    status,
+  } = finalizeResolution(formSchema, workable, resolvedFields);
+  const hasRequiredGap = status === "needs_review";
 
   const { error } = await db
     .from("applications")
     .update({
       form_schema: formSchema,
-      resolved_fields: resolvedFields,
+      resolved_fields: finalFields,
       unresolved_fields: unresolved,
       cover_letter: coverLetter,
       tailored_cv: tailoredCv,
@@ -207,7 +195,7 @@ export async function resolveApplication(applicationId: string): Promise<void> {
   );
 
   console.log(
-    `[resolve] ${applicationId}: ${formSchema.length} fields, ${Object.values(resolvedFields).filter((v) => v !== null).length} resolved (${Object.keys(fromLibrary).length} from your answer library), ${unresolved.length} unresolved -> ${status}`,
+    `[resolve] ${applicationId}: ${formSchema.length} fields, ${Object.values(finalFields).filter((v) => v !== null).length} resolved (${Object.keys(fromLibrary).length} from your answer library), ${unresolved.length} unresolved -> ${status}`,
   );
 }
 

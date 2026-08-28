@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   LOCATION_BOOST,
   SPONSOR_BOOST,
+  STALE_AFTER_DAYS,
+  STALE_PENALTY,
   TITLE_BOOST,
+  isStaleJob,
+  jobAgeDays,
   locationMatches,
   rankMatches,
   titleMatches,
@@ -158,5 +162,74 @@ describe("rankMatches — location", () => {
       { titles: ["Paralegal"], locations: ["London"], needsSponsorship: true },
     );
     expect(ranked[0]!.score).toBe(40 + TITLE_BOOST + SPONSOR_BOOST + LOCATION_BOOST);
+  });
+});
+
+describe("sponsor boost is UK-location-aware (P1-01)", () => {
+  const prefs = { titles: [], needsSponsorship: true };
+
+  it("withholds the boost from a recognisably non-UK role at a licensed employer", () => {
+    const ranked = rankMatches(
+      [
+        { jobId: "warsaw", score: 70, title: "Analyst", sponsorLicensed: true, location: "Warsaw, Poland" },
+        { jobId: "london", score: 70, title: "Analyst", sponsorLicensed: true, location: "London, UK" },
+      ],
+      prefs,
+    );
+    expect(ranked[0]).toEqual({ jobId: "london", score: 70 + SPONSOR_BOOST });
+    expect(ranked[1]).toEqual({ jobId: "warsaw", score: 70 });
+  });
+
+  it("keeps the boost for unknown and plain-remote locations (caveat covers the uncertainty)", () => {
+    for (const location of [null, "Remote"]) {
+      const ranked = rankMatches(
+        [{ jobId: "a", score: 70, title: "Analyst", sponsorLicensed: true, location }],
+        prefs,
+      );
+      expect(ranked[0]!.score, String(location)).toBe(70 + SPONSOR_BOOST);
+    }
+  });
+});
+
+describe("staleness (P1-02)", () => {
+  const days = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+
+  it("jobAgeDays anchors on posted_at, falls back to first_seen_at, null when neither", () => {
+    expect(jobAgeDays(days(10), days(100))).toBe(10);
+    expect(jobAgeDays(null, days(100))).toBe(100);
+    expect(jobAgeDays(null, null)).toBeNull();
+    expect(jobAgeDays("not a date", null)).toBeNull();
+  });
+
+  it("isStaleJob flips past STALE_AFTER_DAYS", () => {
+    expect(isStaleJob(days(STALE_AFTER_DAYS - 1), null)).toBe(false);
+    expect(isStaleJob(days(STALE_AFTER_DAYS + 1), null)).toBe(true);
+    expect(isStaleJob(null, days(STALE_AFTER_DAYS + 1))).toBe(true);
+    // Unknown age is not evidence of staleness.
+    expect(isStaleJob(null, null)).toBe(false);
+  });
+
+  it("demotes a stale role below an equally-scored fresh one", () => {
+    const ranked = rankMatches(
+      [
+        { jobId: "stale", score: 70, title: "Analyst", postedAt: days(200), firstSeenAt: days(200) },
+        { jobId: "fresh", score: 70, title: "Analyst", postedAt: days(2), firstSeenAt: days(2) },
+      ],
+      { titles: [] },
+    );
+    expect(ranked[0]).toEqual({ jobId: "fresh", score: 70 });
+    expect(ranked[1]).toEqual({ jobId: "stale", score: 70 - STALE_PENALTY });
+  });
+
+  it("cannot bury a clearly stronger fit outright, and never goes below zero", () => {
+    const ranked = rankMatches(
+      [
+        { jobId: "old-fit", score: 90, title: "Analyst", postedAt: days(200) },
+        { jobId: "fresh-weak", score: 60, title: "Analyst", postedAt: days(1) },
+      ],
+      { titles: [] },
+    );
+    expect(ranked[0]!.jobId).toBe("old-fit");
+    expect(rankMatches([{ jobId: "a", score: 3, title: "x", postedAt: days(200) }], { titles: [] })[0]!.score).toBe(0);
   });
 });

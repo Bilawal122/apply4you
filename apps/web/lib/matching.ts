@@ -55,10 +55,17 @@ export async function runMatchNow(userId: string): Promise<{ embedded: boolean; 
   const jobIds = candidates.map((c: { job_id: string }) => c.job_id);
   const { data: jobs } = await db
     .from("jobs")
-    .select("id, title, sponsor_verdict, location")
+    .select("id, title, sponsor_verdict, location, posted_at, first_seen_at")
     .in("id", jobIds)
     .overrideTypes<
-      { id: string; title: string; sponsor_verdict: { licensed?: boolean } | null; location: string | null }[]
+      {
+        id: string;
+        title: string;
+        sponsor_verdict: { licensed?: boolean } | null;
+        location: string | null;
+        posted_at: string | null;
+        first_seen_at: string | null;
+      }[]
     >();
   const jobById = new Map((jobs ?? []).map((j) => [j.id, j]));
 
@@ -69,6 +76,8 @@ export async function runMatchNow(userId: string): Promise<{ embedded: boolean; 
       title: jobById.get(c.job_id)?.title ?? "",
       sponsorLicensed: jobById.get(c.job_id)?.sponsor_verdict?.licensed === true,
       location: jobById.get(c.job_id)?.location ?? null,
+      postedAt: jobById.get(c.job_id)?.posted_at ?? null,
+      firstSeenAt: jobById.get(c.job_id)?.first_seen_at ?? null,
     })),
     preferences,
   );

@@ -1,3 +1,5 @@
+import { SUPPORT_EMAIL } from "@apply4you/shared";
+
 export class AtsHttpError extends Error {
   constructor(
     public readonly status: number,
@@ -7,7 +9,7 @@ export class AtsHttpError extends Error {
   }
 }
 
-const USER_AGENT = "apply4you-sourcing/0.1 (job aggregation; contact: support@apply4you.example)";
+const USER_AGENT = `apply4you-sourcing/0.1 (job aggregation; contact: ${SUPPORT_EMAIL})`;
 
 export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {

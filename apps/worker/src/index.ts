@@ -1,4 +1,9 @@
 import type { Worker } from "bullmq";
+import {
+  WORKER_HEARTBEAT_INTERVAL_MS,
+  WORKER_HEARTBEAT_KEY,
+  WORKER_HEARTBEAT_TTL_SECONDS,
+} from "@apply4you/shared";
 import { registerAllAdapters } from "@apply4you/ats";
 import { registerUsageSink } from "./usage.js";
 import { connection, queues } from "./queues.js";
@@ -178,6 +183,53 @@ async function reenqueueStrandedDrafts(): Promise<void> {
   if (requeued) console.log(`[worker] re-enqueued ${requeued} stranded draft(s)`);
 }
 
+const startedAt = new Date().toISOString();
+
+/**
+ * The heartbeat the rest of the system can actually see. The old heartbeat
+ * was a console.log — visible only to whoever was watching this process's
+ * stdout, which is nobody when the worker silently dies. This key is what
+ * /api/health/queue and the applications page read to distinguish "Redis
+ * reachable" from "worker processing". TTL > interval, so a dead worker's
+ * beat disappears on its own.
+ */
+async function writeHeartbeat(): Promise<void> {
+  try {
+    await connection.set(
+      WORKER_HEARTBEAT_KEY,
+      JSON.stringify({ at: new Date().toISOString(), startedAt, pid: process.pid }),
+      "EX",
+      WORKER_HEARTBEAT_TTL_SECONDS,
+    );
+  } catch (err) {
+    console.error("[worker] heartbeat write failed:", String(err).slice(0, 200));
+  }
+}
+
+/** How often the boot-time reconcilers re-run while the worker stays up. */
+const RECONCILE_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * The reconcilers used to run only at boot, so a long-lived worker never
+ * self-healed: an approved row whose queue job was lost, or a draft whose
+ * resolve enqueue failed, stayed stuck until the next restart. Same
+ * functions, on a clock. Each is isolated — one failing must not stop the
+ * others or kill the process.
+ */
+async function reconcile(): Promise<void> {
+  for (const [label, fn] of [
+    ["stuck-submissions", reconcileStuckSubmissions],
+    ["approved-reenqueue", reenqueueApprovedApplications],
+    ["stranded-drafts", reenqueueStrandedDrafts],
+  ] as const) {
+    try {
+      await fn();
+    } catch (err) {
+      console.error(`[worker] reconcile ${label} failed:`, String(err).slice(0, 200));
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const pong = await connection.ping();
   console.log(`[worker] redis connected (${pong})`);
@@ -211,9 +263,15 @@ async function main(): Promise<void> {
 
   logFailures(sourcing, embedding, profileEmbedding, matching, resolve, ...submits);
 
+  await writeHeartbeat();
   setInterval(() => {
+    void writeHeartbeat();
     console.log(`[worker] heartbeat ${new Date().toISOString()}`);
-  }, 60_000);
+  }, WORKER_HEARTBEAT_INTERVAL_MS);
+
+  setInterval(() => {
+    void reconcile();
+  }, RECONCILE_INTERVAL_MS);
 
   console.log("[worker] up");
 }

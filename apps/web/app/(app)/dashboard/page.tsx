@@ -382,7 +382,7 @@ export default async function DashboardPage() {
                       {remote && <Chip>remote</Chip>}
                       <Chip>{m.jobs.ats_type}</Chip>
                       {m.jobs.sponsor_verdict?.licensed && (
-                        <SponsorBadge verdict={m.jobs.sponsor_verdict} />
+                        <SponsorBadge verdict={m.jobs.sponsor_verdict} location={m.jobs.location} />
                       )}
                     </div>
 

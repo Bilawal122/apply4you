@@ -1,10 +1,11 @@
+import { SUPPORT_EMAIL } from "@apply4you/shared";
 import { LegalShell, LegalSection } from "@/components/legal-shell";
 
 export const metadata = { title: "Terms of Service — Apply4You" };
 
 export default function TermsPage() {
   return (
-    <LegalShell title="Terms of Service" updated="July 2026">
+    <LegalShell title="Terms of Service" updated="August 2026">
       <p className="text-[16.5px] leading-[1.65]">
         By using Apply4You you agree to these terms. They describe what the service does, what you&apos;re
         responsible for, and the limits of what we promise.
@@ -75,7 +76,12 @@ export default function TermsPage() {
       </LegalSection>
 
       <LegalSection heading="Contact">
-        <p>support@apply4you.example.</p>
+        <p>
+          <a className="underline" href={`mailto:${SUPPORT_EMAIL}`}>
+            {SUPPORT_EMAIL}
+          </a>
+          .
+        </p>
       </LegalSection>
     </LegalShell>
   );

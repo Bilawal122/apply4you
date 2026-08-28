@@ -1,6 +1,11 @@
 import { Queue } from "bullmq";
 import { Redis } from "ioredis";
-import { QUEUES, submitQueueFor } from "@apply4you/shared";
+import {
+  QUEUES,
+  WORKER_HEARTBEAT_KEY,
+  WORKER_HEARTBEAT_STALE_MS,
+  submitQueueFor,
+} from "@apply4you/shared";
 
 /**
  * Thin BullMQ producer — the web app only enqueues; all processing happens in
@@ -165,4 +170,93 @@ export async function pingQueue(): Promise<{ ok: boolean; detail: string; latenc
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, detail: message.slice(0, 120), latencyMs: Date.now() - started };
   }
+}
+
+export interface WorkerHeartbeat {
+  alive: boolean;
+  lastSeen: string | null;
+  startedAt: string | null;
+}
+
+/**
+ * Is anything actually CONSUMING the queues? A Redis PONG only proves Redis
+ * is up — the incident that motivated all of this was ten applications
+ * sitting in "still filling out" while the health endpoint said ok. The
+ * worker refreshes a TTL'd heartbeat key; no key (or a stale one) means no
+ * consumer. Never throws: an unreadable heartbeat is reported as "not alive",
+ * which is the safe direction for every caller.
+ */
+export async function workerHeartbeat(): Promise<WorkerHeartbeat> {
+  try {
+    const raw = await bounded(() => redis().get(WORKER_HEARTBEAT_KEY));
+    if (!raw) return { alive: false, lastSeen: null, startedAt: null };
+    const beat = JSON.parse(raw) as { at?: string; startedAt?: string };
+    const at = typeof beat.at === "string" ? beat.at : null;
+    const age = at ? Date.now() - new Date(at).getTime() : Number.POSITIVE_INFINITY;
+    return {
+      alive: Number.isFinite(age) && age < WORKER_HEARTBEAT_STALE_MS,
+      lastSeen: at,
+      startedAt: typeof beat.startedAt === "string" ? beat.startedAt : null,
+    };
+  } catch {
+    return { alive: false, lastSeen: null, startedAt: null };
+  }
+}
+
+export interface QueueCounts {
+  waiting: number;
+  active: number;
+  failed: number;
+  delayed: number;
+  /** Age of the oldest job seen in the waiting page, or null when empty. */
+  oldestWaitingMs: number | null;
+}
+
+export interface QueueHealth {
+  redis: { ok: boolean; detail: string; latencyMs: number };
+  worker: WorkerHeartbeat;
+  queues: Record<string, QueueCounts | null>;
+}
+
+/** The queues a stuck user actually cares about. */
+const HEALTH_QUEUES = [
+  QUEUES.resolve,
+  QUEUES.submitGreenhouse,
+  QUEUES.submitLever,
+  QUEUES.submitAshby,
+  QUEUES.submitWorkable,
+] as const;
+
+/** Full operational picture: Redis, consumer liveness, depth and backlog age. */
+export async function queueHealth(): Promise<QueueHealth> {
+  const redisPing = await pingQueue();
+  if (!redisPing.ok) {
+    return { redis: redisPing, worker: { alive: false, lastSeen: null, startedAt: null }, queues: {} };
+  }
+
+  const worker = await workerHeartbeat();
+  const counts: Record<string, QueueCounts | null> = {};
+  for (const name of HEALTH_QUEUES) {
+    try {
+      const q = queue(name);
+      const jobCounts = await bounded(() => q.getJobCounts("waiting", "active", "failed", "delayed"));
+      let oldestWaitingMs: number | null = null;
+      if ((jobCounts.waiting ?? 0) > 0) {
+        // A page, not the head: cheap insurance against list-order assumptions.
+        const waiting = await bounded(() => q.getWaiting(0, 49));
+        const oldest = Math.min(...waiting.map((j) => j.timestamp ?? Number.POSITIVE_INFINITY));
+        if (Number.isFinite(oldest)) oldestWaitingMs = Date.now() - oldest;
+      }
+      counts[name] = {
+        waiting: jobCounts.waiting ?? 0,
+        active: jobCounts.active ?? 0,
+        failed: jobCounts.failed ?? 0,
+        delayed: jobCounts.delayed ?? 0,
+        oldestWaitingMs,
+      };
+    } catch {
+      counts[name] = null; // this queue's stats were unreadable; say so, don't guess
+    }
+  }
+  return { redis: redisPing, worker, queues: counts };
 }
