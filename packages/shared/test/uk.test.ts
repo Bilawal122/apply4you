@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isUkLocation } from "../src/uk.js";
+import { byUkFirst, isUkLocation } from "../src/uk.js";
 
 describe("isUkLocation", () => {
   it("accepts explicit country markers in the shapes the ATSs actually write", () => {
@@ -64,5 +64,30 @@ describe("isUkLocation", () => {
   it("does not claim a bare Remote is British", () => {
     expect(isUkLocation("Remote")).toBe(false);
     expect(isUkLocation("Remote - US")).toBe(false);
+  });
+});
+
+describe("byUkFirst", () => {
+  const locOf = (j: { location: string | null }) => j.location;
+
+  it("puts UK jobs ahead of non-UK ones", () => {
+    const jobs = [
+      { location: "San Francisco, CA" },
+      { location: "London, UK" },
+      { location: "Austin, TX" },
+      { location: "Manchester" },
+    ];
+    const sorted = [...jobs].sort(byUkFirst(locOf));
+    expect(sorted.slice(0, 2).map(locOf).sort()).toEqual(["London, UK", "Manchester"]);
+  });
+
+  it("treats a missing location as non-UK, not as a tie-breaker crash", () => {
+    const jobs = [{ location: null }, { location: "Leeds" }, { location: null }];
+    expect(jobs.sort(byUkFirst(locOf))[0].location).toBe("Leeds");
+  });
+
+  it("is a no-op when nothing is UK", () => {
+    const jobs = [{ location: "Berlin" }, { location: "Paris" }];
+    expect([...jobs].sort(byUkFirst(locOf))).toEqual(jobs);
   });
 });

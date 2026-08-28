@@ -1,5 +1,5 @@
 import { Worker, type Job } from "bullmq";
-import { QUEUES } from "@apply4you/shared";
+import { QUEUES, byUkFirst, isUkLocation } from "@apply4you/shared";
 import { deriveSummary, embedJob, embedProfile, jobEmbeddingText, profileEmbeddingText, withUsageUser } from "@apply4you/ai";
 import { queues, workerConnection } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
@@ -115,6 +115,93 @@ export async function enqueueMissingProfileEmbeddings(): Promise<number> {
     queued++;
   }
   if (queued) console.log(`[embed-profile] backfilled ${queued} profile(s) that had no embedding`);
+  return queued;
+}
+
+/** Bounded per pass so a pathological backlog cannot flood Redis in one go. */
+const MAX_EMBEDDING_BACKFILL_PER_PASS = 5000;
+/** …and split across round trips rather than one very large pipeline. */
+const ENQUEUE_CHUNK = 500;
+
+/**
+ * Open jobs that never got an embedding.
+ *
+ * A job is enqueued for embedding exactly once — by the poll that first stores
+ * it — under the deterministic id `embed-job-<uuid>`. Both halves of that fail
+ * permanently. If the `addBulk` throws because Redis is unreachable, the rows
+ * are already upserted, so the next poll finds them in `existing`, `newIds`
+ * comes back empty, and nothing ever asks again. And if the embed job runs and
+ * fails, BullMQ retains it under that id, so every later `add` with the same id
+ * is a silent no-op — the same trap that made enqueueMissingProfileEmbeddings
+ * use a unique one.
+ *
+ * The consequence is total: `match_jobs` joins through `job_embeddings`, so an
+ * unembedded job cannot be returned to any user, ever. It is in the index, it
+ * counts towards the index, and it is unreachable. Measured on prod when this
+ * was written: 3,072 of 26,388 open jobs (11.6%), of which 148 were UK — 10% of
+ * the whole UK supply. The first_seen dates named the cause: 2,044 on one day,
+ * 543 and 468 on two others, across 42, 13 and 34 different boards. Outage
+ * windows, not bad boards.
+ *
+ * UK jobs go first. They are 6% of the index and the entire point of the
+ * product, so when a backfill is draining at 90/min for half an hour, the
+ * scarce supply should not be queued behind 2,900 US postings.
+ *
+ * Bounded per pass so a pathological backlog drains over several cycles instead
+ * of putting tens of thousands of jobs into Redis at once. Called at boot and
+ * on every 2h poll cycle, so a gap closes within hours rather than never.
+ */
+export async function enqueueMissingJobEmbeddings(): Promise<number> {
+  const db = supabaseAdmin();
+  // Cast rather than .overrideTypes(): the client is an untyped SupabaseClient,
+  // so the rpc builder cannot tell a set-returning function from a scalar one
+  // and rejects an array override outright.
+  const { data, error } = await db.rpc("jobs_missing_embeddings", {
+    p_limit: MAX_EMBEDDING_BACKFILL_PER_PASS,
+  });
+  const rows = data as { job_id: string; location: string | null }[] | null;
+  if (error) {
+    // Never fatal: this is a repair pass, and failing it must not stop a poll
+    // cycle or a worker boot.
+    console.error("[embed-job] backfill lookup failed:", error.message);
+    return 0;
+  }
+  if (!rows?.length) return 0;
+
+  const ordered = [...rows].sort(byUkFirst((r) => r.location));
+
+  // Unique ids on purpose. The deterministic `embed-job-<uuid>` these jobs were
+  // first queued under may still be held by a completed-or-failed BullMQ entry,
+  // in which case re-adding it does nothing at all and this function would
+  // report success while fixing none of them.
+  const stamp = Date.now();
+  const entries = ordered.map((row) => ({
+    name: "embed-job",
+    data: { jobId: row.job_id } satisfies EmbedJobData,
+    opts: { jobId: `embed-job-backfill-${row.job_id}-${stamp}` },
+  }));
+
+  // Chunked: addBulk is one pipeline, and 5,000 entries in a single round trip
+  // is a lot to hold. Partial progress is fine — the pass is idempotent, and
+  // whatever this run misses the next one picks up.
+  let queued = 0;
+  for (let i = 0; i < entries.length; i += ENQUEUE_CHUNK) {
+    try {
+      await queues.embedding.addBulk(entries.slice(i, i + ENQUEUE_CHUNK));
+      queued += Math.min(ENQUEUE_CHUNK, entries.length - i);
+    } catch (err) {
+      // Non-fatal, like the lookup above. This runs at the end of a poll cycle
+      // that has already fanned out its board polls; letting a Redis flap here
+      // fail the whole poll-all job would cost the sourcing run for the sake of
+      // a repair that retries in two hours anyway.
+      console.error("[embed-job] backfill enqueue failed:", String(err).slice(0, 160));
+      break;
+    }
+  }
+  if (queued === 0) return 0;
+
+  const uk = ordered.slice(0, queued).filter((r) => isUkLocation(r.location)).length;
+  console.log(`[embed-job] backfilled ${queued} job(s) with no embedding (${uk} UK)`);
   return queued;
 }
 

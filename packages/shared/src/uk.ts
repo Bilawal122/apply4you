@@ -101,3 +101,17 @@ export function isUkLocation(location: string | null | undefined): boolean {
     UK_CITY_AMBIGUOUS.some((p) => p.test(location))
   );
 }
+
+/**
+ * Comparator putting UK-located items first.
+ *
+ * Exists as a named, tested thing because the inline form
+ * (`Number(isUk(b)) - Number(isUk(a))`) is one transposition away from ranking
+ * UK *last*, and that failure is invisible: the list is still fully sorted, the
+ * backfill still drains, and the only symptom is that the scarcest supply in
+ * the index waits behind everything else.
+ */
+export function byUkFirst<T>(getLocation: (item: T) => string | null | undefined) {
+  return (a: T, b: T): number =>
+    Number(isUkLocation(getLocation(b))) - Number(isUkLocation(getLocation(a)));
+}
