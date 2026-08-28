@@ -37,6 +37,7 @@ export function FeedFilters() {
   const params = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const locationDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setParam = useCallback(
     (key: string, value: string) => {
@@ -59,9 +60,18 @@ export function FeedFilters() {
     [setParam],
   );
 
+  const setLocation = useCallback(
+    (value: string) => {
+      if (locationDebounceRef.current) clearTimeout(locationDebounceRef.current);
+      locationDebounceRef.current = setTimeout(() => setParam("location", value), SEARCH_DEBOUNCE_MS);
+    },
+    [setParam],
+  );
+
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (locationDebounceRef.current) clearTimeout(locationDebounceRef.current);
     };
   }, []);
 
@@ -70,7 +80,8 @@ export function FeedFilters() {
   const minScore = params.get("minScore") ?? "";
   const remote = params.get("remote") === "1";
   const sponsored = params.get("sponsored") === "1";
-  const hasFilters = q || ats || minScore || remote || sponsored;
+  const location = params.get("location") ?? "";
+  const hasFilters = q || ats || minScore || remote || sponsored || location;
 
   return (
     <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -79,6 +90,20 @@ export function FeedFilters() {
         placeholder="Search title or company"
         defaultValue={q}
         onChange={(e) => setSearch(e.target.value.trim())}
+      />
+
+      {/*
+        The control the preferences form used to point at while it did not
+        exist ("filter the feed by location in the meantime"). Free text rather
+        than a select, because job locations are free text across four ATSs and
+        any fixed list would be wrong for someone.
+      */}
+      <input
+        className={searchCls}
+        placeholder="Location"
+        aria-label="Filter by location"
+        defaultValue={location}
+        onChange={(e) => setLocation(e.target.value.trim())}
       />
 
       <span className="relative inline-flex">

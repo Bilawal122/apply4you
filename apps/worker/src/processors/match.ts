@@ -26,10 +26,11 @@ async function matchUser(userId: string): Promise<void> {
   type JobRow = {
     id: string; title: string; company: string; description: string | null;
     sponsor_verdict: { licensed?: boolean } | null;
+    location: string | null;
   };
   const { data: jobs } = await db
     .from("jobs")
-    .select("id, title, company, description, sponsor_verdict")
+    .select("id, title, company, description, sponsor_verdict, location")
     .in("id", jobIds)
     .overrideTypes<JobRow[]>();
   const jobById = new Map<string, JobRow>((jobs ?? []).map((j) => [j.id, j]));
@@ -42,6 +43,7 @@ async function matchUser(userId: string): Promise<void> {
       score: m.score,
       title: jobById.get(m.job_id)?.title ?? "",
       sponsorLicensed: jobById.get(m.job_id)?.sponsor_verdict?.licensed === true,
+      location: jobById.get(m.job_id)?.location ?? null,
     })),
     preferences,
   );

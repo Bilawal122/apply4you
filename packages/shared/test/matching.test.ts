@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { SPONSOR_BOOST, TITLE_BOOST, rankMatches, titleMatches } from "../src/matching.js";
+import {
+  LOCATION_BOOST,
+  SPONSOR_BOOST,
+  TITLE_BOOST,
+  locationMatches,
+  rankMatches,
+  titleMatches,
+} from "../src/matching.js";
 
 describe("titleMatches", () => {
   it("matches when every token of a preference appears in the title", () => {
@@ -82,5 +89,74 @@ describe("rankMatches", () => {
       { titles, needsSponsorship: true },
     );
     expect(ranked[0]!.score).toBe(50 + TITLE_BOOST + SPONSOR_BOOST);
+  });
+});
+
+describe("locationMatches", () => {
+  it("finds a short preference inside a long ATS string", () => {
+    // The three spellings of London that actually appear in the index.
+    expect(locationMatches(["London"], "London")).toBe(true);
+    expect(locationMatches(["London"], "London, UK")).toBe(true);
+    expect(locationMatches(["London"], "London, United Kingdom")).toBe(true);
+  });
+
+  it("is case-insensitive and ignores surrounding whitespace in the preference", () => {
+    expect(locationMatches(["  manchester "], "Manchester, England")).toBe(true);
+  });
+
+  it("does not match a different place", () => {
+    expect(locationMatches(["Manchester"], "San Francisco, CA")).toBe(false);
+  });
+
+  it("treats a missing job location as not a match", () => {
+    // An unknown location is not evidence of the right one.
+    expect(locationMatches(["London"], null)).toBe(false);
+  });
+
+  it("ignores empty preference entries rather than matching everything", () => {
+    // "".includes() is true for every string, so a stray blank chip would
+    // otherwise boost the entire index.
+    expect(locationMatches([""], "San Francisco")).toBe(false);
+    expect(locationMatches(["   "], "San Francisco")).toBe(false);
+  });
+
+  it("matches a bare Remote against Remote - US, which is why the form suggests Remote (UK)", () => {
+    // Documenting a real limitation rather than pretending it away: 3,240 open
+    // jobs say "Remote" and most are US-only, so a bare "Remote" preference is
+    // a weak signal.
+    expect(locationMatches(["Remote"], "Remote - US")).toBe(true);
+    expect(locationMatches(["Remote (UK)"], "Remote - US")).toBe(false);
+  });
+});
+
+describe("rankMatches — location", () => {
+  it("lifts a location match above a better-scoring job elsewhere", () => {
+    const ranked = rankMatches(
+      [
+        { jobId: "sf", score: 80, title: "Analyst", location: "San Francisco, CA" },
+        { jobId: "mcr", score: 70, title: "Analyst", location: "Manchester, UK" },
+      ],
+      { titles: [], locations: ["Manchester"] },
+    );
+    expect(ranked[0]).toEqual({ jobId: "mcr", score: 70 + LOCATION_BOOST });
+  });
+
+  it("does nothing when the user has stated no locations", () => {
+    const ranked = rankMatches(
+      [
+        { jobId: "sf", score: 80, title: "Analyst", location: "San Francisco, CA" },
+        { jobId: "mcr", score: 70, title: "Analyst", location: "Manchester, UK" },
+      ],
+      { titles: [] },
+    );
+    expect(ranked[0]!.jobId).toBe("sf");
+  });
+
+  it("stacks with the title and sponsor boosts", () => {
+    const ranked = rankMatches(
+      [{ jobId: "a", score: 40, title: "Paralegal", location: "London, UK", sponsorLicensed: true }],
+      { titles: ["Paralegal"], locations: ["London"], needsSponsorship: true },
+    );
+    expect(ranked[0]!.score).toBe(40 + TITLE_BOOST + SPONSOR_BOOST + LOCATION_BOOST);
   });
 });

@@ -37,6 +37,12 @@ export function profileEmbeddingText(profile: Profile, prefs: Preferences): stri
     .join("\n");
   return [
     prefs.titles.length ? `Target roles: ${prefs.titles.join(", ")}` : "",
+    // Where they can actually work. Omitted until now, which is part of why a
+    // Manchester graduate's nearest neighbours were San Francisco: nothing in
+    // the query vector said otherwise. This is the softest of the three
+    // location signals — the candidate pool and the boost do the real work —
+    // but it costs nothing and pulls the query toward the right region.
+    prefs.locations.length ? `Locations: ${prefs.locations.join(", ")}` : "",
     prefs.seniority.length ? `Seniority: ${prefs.seniority.join(", ")}` : "",
     prefs.industries.length ? `Industries: ${prefs.industries.join(", ")}` : "",
     profile.summary,

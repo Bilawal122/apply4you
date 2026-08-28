@@ -55,9 +55,11 @@ export async function runMatchNow(userId: string): Promise<{ embedded: boolean; 
   const jobIds = candidates.map((c: { job_id: string }) => c.job_id);
   const { data: jobs } = await db
     .from("jobs")
-    .select("id, title, sponsor_verdict")
+    .select("id, title, sponsor_verdict, location")
     .in("id", jobIds)
-    .overrideTypes<{ id: string; title: string; sponsor_verdict: { licensed?: boolean } | null }[]>();
+    .overrideTypes<
+      { id: string; title: string; sponsor_verdict: { licensed?: boolean } | null; location: string | null }[]
+    >();
   const jobById = new Map((jobs ?? []).map((j) => [j.id, j]));
 
   const scored = rankMatches(
@@ -66,6 +68,7 @@ export async function runMatchNow(userId: string): Promise<{ embedded: boolean; 
       score: c.score,
       title: jobById.get(c.job_id)?.title ?? "",
       sponsorLicensed: jobById.get(c.job_id)?.sponsor_verdict?.licensed === true,
+      location: jobById.get(c.job_id)?.location ?? null,
     })),
     preferences,
   );
