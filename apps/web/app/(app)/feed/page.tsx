@@ -41,6 +41,7 @@ interface FeedParams {
   minScore?: string;
   remote?: string;
   sponsored?: string;
+  location?: string;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -56,7 +57,7 @@ function postedLabel(postedAt: string | null): string | null {
 }
 
 export default async function FeedPage({ searchParams }: { searchParams: Promise<FeedParams> }) {
-  const { q, ats, minScore, remote, sponsored } = await searchParams;
+  const { q, ats, minScore, remote, sponsored, location } = await searchParams;
   const supabase = await createClient();
 
   // Descriptions average ~8KB (Greenhouse stores full HTML), so they are NOT
@@ -74,6 +75,12 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
   if (minScore) query = query.gte("score", Number(minScore));
   if (ats && ["greenhouse", "lever", "ashby", "workable"].includes(ats)) query = query.eq("jobs.ats_type", ats);
   if (remote === "1") query = query.ilike("jobs.location", "%remote%");
+  if (location) {
+    // Same PostgREST-syntax stripping as the search box below: user input must
+    // not be able to break out of the ilike pattern.
+    const safeLocation = location.replace(/[,()*\\%:"]/g, "").slice(0, 60).trim();
+    if (safeLocation) query = query.ilike("jobs.location", `%${safeLocation}%`);
+  }
   if (sponsored === "1") query = query.not("jobs.sponsor_verdict", "is", null);
   if (q) {
     // Strip characters significant to PostgREST filter syntax so user input
@@ -123,7 +130,7 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
   // Pending covers the embed AND the match write: the embedding lands seconds
   // before job_matches rows do, and both states should read "in progress".
   const matchingPending = !profileRow?.embedding || (totalMatches ?? 0) === 0;
-  const filtered = Boolean(q || ats || minScore || remote || sponsored);
+  const filtered = Boolean(q || ats || minScore || remote || sponsored || location);
   const noResume = !profileRow?.resume_storage_path;
 
   // The masthead states a number this page can actually stand behind: matched,

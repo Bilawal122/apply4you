@@ -34,6 +34,40 @@ export const TITLE_BOOST = 8;
 export const SPONSOR_BOOST = 15;
 
 /**
+ * Added when the job's location mentions one the user gave.
+ *
+ * Between the two existing boosts: a wrong-country job is worse than a
+ * wrong-title one (you cannot take it at all) but the signal is less certain
+ * than a sponsor licence, because ATS location strings are free text and a
+ * blank or "Remote" location is not evidence of anything. So it orders the
+ * pool rather than gating it — `match_jobs` guarantees location matches reach
+ * the pool, and this decides where they sit.
+ */
+export const LOCATION_BOOST = 12;
+
+/**
+ * Whether a job's location mentions one of the user's preferred locations.
+ *
+ * Substring, case-insensitive, in that direction on purpose: the preference is
+ * short and human ("London", "Manchester") while the job's is long and
+ * inconsistent across four ATSs ("London, UK", "London, United Kingdom",
+ * "US - San Francisco"). Matching the short inside the long is what makes
+ * "London" find all three London spellings.
+ *
+ * A job with no location cannot match. That is deliberate — an unknown
+ * location is not evidence of the right one, and the pool has already
+ * guaranteed such jobs are present to be ranked.
+ */
+export function locationMatches(prefLocations: string[], jobLocation: string | null): boolean {
+  if (!jobLocation) return false;
+  const haystack = jobLocation.toLowerCase();
+  return prefLocations.some((loc) => {
+    const needle = loc.trim().toLowerCase();
+    return needle.length > 0 && haystack.includes(needle);
+  });
+}
+
+/**
  * Whether a job title satisfies one of the user's preferred titles.
  *
  * Every token of a preference must appear in the title, so "software engineer"
@@ -51,16 +85,25 @@ export function titleMatches(prefTitles: string[], jobTitle: string): boolean {
 
 /** Applies the boosts and orders by final score. Pure, so both paths agree. */
 export function rankMatches<
-  T extends { jobId: string; score: number; title: string; sponsorLicensed?: boolean },
+  T extends {
+    jobId: string;
+    score: number;
+    title: string;
+    sponsorLicensed?: boolean;
+    location?: string | null;
+  },
 >(
   candidates: T[],
-  prefs: { titles: string[]; needsSponsorship?: boolean },
+  prefs: { titles: string[]; locations?: string[]; needsSponsorship?: boolean },
 ): { jobId: string; score: number }[] {
   return candidates
-    .map(({ jobId, score, title, sponsorLicensed }) => {
+    .map(({ jobId, score, title, sponsorLicensed, location }) => {
       const titleBoost = titleMatches(prefs.titles, title) ? TITLE_BOOST : 0;
       const sponsorBoost = prefs.needsSponsorship && sponsorLicensed ? SPONSOR_BOOST : 0;
-      return { jobId, score: Math.min(100, score + titleBoost + sponsorBoost) };
+      const locationBoost = locationMatches(prefs.locations ?? [], location ?? null)
+        ? LOCATION_BOOST
+        : 0;
+      return { jobId, score: Math.min(100, score + titleBoost + sponsorBoost + locationBoost) };
     })
     .sort((a, b) => b.score - a.score);
 }

@@ -170,8 +170,8 @@ export function PreferencesForm({ initial, redirectTo }: { initial: Preferences;
             onChange={(v) => set("titles", v)}
           />
           <ChipInput
-            label="Locations — not used for matching yet"
-            hint="Stored for later. Ranking currently uses titles, seniority, industries, skills and your CV — filter the feed by location in the meantime."
+            label="Locations"
+            hint="Used for matching: jobs in these places are pulled into your results and ranked above ones that aren't. Job boards write locations freely, so a broad entry like London catches more than London Bridge."
             placeholder="London, Manchester, Remote (UK)"
             value={prefs.locations}
             onChange={(v) => set("locations", v)}
