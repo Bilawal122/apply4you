@@ -25,9 +25,14 @@ const UK_COUNTRY = [
   /\bunited kingdom\b/i,
   /\bu\.?k\.?\b/i,
   /\bgreat britain\b/i,
-  /\bengland\b/i,
+  // Lookbehinds keep the compound foreign names out: "New England" (US) and
+  // "New South Wales" (AU) both contain a UK country name, and UK_COUNTRY is
+  // tested BEFORE the non-UK markers — so without these, every Sydney role
+  // read as British and carried a UK sponsor badge. "Cardiff, South Wales"
+  // still matches, because only "new south " is excluded.
+  /(?<!new )\bengland\b/i,
   /\bscotland\b/i,
-  /\bwales\b/i,
+  /(?<!new south )\bwales\b/i,
   /\bnorthern ireland\b/i,
 ];
 
@@ -73,6 +78,16 @@ const UK_CITY_AMBIGUOUS = [
 const NON_UK = [
   /\bunited states\b/i,
   /\bu\.?s\.?a\.?\b/i,
+  // The dotted form carries no trailing "a", so the pattern above misses it;
+  // "Remote - U.S." is a common Greenhouse/Lever spelling. Dot required, so
+  // prose "us" cannot match.
+  /\bu\.s\.?a?\.?\b/i,
+  // Compound names that CONTAIN a UK country: excluding them from UK_COUNTRY
+  // is not enough on its own, because "Newcastle, New South Wales" would then
+  // fall through to the ambiguous-city list and match Newcastle. They have to
+  // positively place the string elsewhere.
+  /\bnew south wales\b/i,
+  /\bnew england\b/i,
   /\bcanada\b/i,
   /\baustralia\b/i,
   /\bnew zealand\b/i,

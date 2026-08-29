@@ -20,8 +20,6 @@ type PollBoardData = { boardSourceId: string };
 const MAX_CONSECUTIVE_FAILURES = 3;
 /** Cap per-new-job enrichment (Workable detail fetches) per poll to bound request volume. */
 const MAX_ENRICH_PER_POLL = 50;
-/** A board unpolled this long can no longer vouch for its jobs being open. */
-const STALE_BOARD_DAYS = 7;
 /** Bound the orphan sweep per cycle; the 2h cadence drains any backlog. */
 const SWEEP_CLOSE_CAP = 2000;
 
@@ -150,9 +148,9 @@ async function closeJobsByIds(ids: string[]): Promise<void> {
  * its open jobs, which then stayed in matching and the feed forever (this is
  * how a June-2025 role survived into an August-2026 feed). pollBoard now
  * closes on deactivation; this sweep also runs every cycle to clean rows
- * stranded historically, by board deletion (FK sets board_source_id null),
- * or by a board that has simply not completed a poll in STALE_BOARD_DAYS.
- * Repair pass: it logs and returns rather than failing the poll cycle.
+ * stranded historically or by board deletion (the FK sets board_source_id
+ * null). Repair pass: it logs and returns rather than failing the poll
+ * cycle.
  */
 async function closeOrphanedJobs(): Promise<void> {
   const db = supabaseAdmin();
@@ -168,11 +166,16 @@ async function closeOrphanedJobs(): Promise<void> {
     if (strandedError) throw new Error(strandedError.message);
     toClose.push(...((strandedRows ?? []) as { id: string }[]).map((r) => r.id));
 
-    const cutoff = new Date(Date.now() - STALE_BOARD_DAYS * 86_400_000).toISOString();
+    // Deactivated boards only. An "unpolled for N days" arm was tempting but
+    // unsafe: it runs inside pollAll, concurrently with this very cycle's
+    // poll-board jobs, so after any outage longer than the threshold every
+    // board looks stale and the sweep closes live vacancies out from under
+    // the polls that are refreshing them. Deactivation is the unambiguous
+    // signal, and pollBoard already closes on its way out.
     const { data: deadBoards, error: boardsError } = await db
       .from("board_sources")
       .select("id")
-      .or(`active.eq.false,last_polled_at.lt.${cutoff}`);
+      .eq("active", false);
     if (boardsError) throw new Error(boardsError.message);
 
     for (const ids of chunk(((deadBoards ?? []) as { id: string }[]).map((b) => b.id), ID_CHUNK)) {

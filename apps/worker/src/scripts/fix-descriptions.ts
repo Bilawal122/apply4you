@@ -53,16 +53,20 @@ async function main(): Promise<void> {
       repaired += 1;
       if (dryRun) continue;
 
+      // Embedding first, description second — the two writes are not atomic,
+      // and this is the order that survives a crash between them. Cleaning
+      // the text first would leave a row that no longer matches this scan,
+      // so a re-run would skip it and its tag-soup embedding would live
+      // forever. This way a crash leaves a row that still matches, plus a
+      // missing embedding the standing sweep will rebuild.
+      const { error: embError } = await db.from("job_embeddings").delete().eq("job_id", row.id);
+      if (embError) throw new Error(`drop embedding ${row.id}: ${embError.message}`);
+
       const { error: updateError } = await db
         .from("jobs")
         .update({ description: cleaned })
         .eq("id", row.id);
       if (updateError) throw new Error(`update ${row.id}: ${updateError.message}`);
-
-      // Deleted, not re-upserted: the missing-embeddings sweep (embed.ts,
-      // runs at boot + every poll cycle) picks the row up and re-embeds.
-      const { error: embError } = await db.from("job_embeddings").delete().eq("job_id", row.id);
-      if (embError) throw new Error(`drop embedding ${row.id}: ${embError.message}`);
     }
     if (rows.length < PAGE) break;
   }

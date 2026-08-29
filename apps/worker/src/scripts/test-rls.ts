@@ -98,13 +98,20 @@ async function main(): Promise<void> {
       .select("id")
       .single();
     if (appErr || !appA) throw new Error(`application fixture: ${appErr?.message}`);
-    await admin.from("application_events").insert({
+    // Checked, not fire-and-forget: a fixture that silently fails to insert
+    // makes "B cannot read A's rows" pass because there is nothing to read —
+    // certifying isolation this suite never actually tested.
+    const { error: eventErr } = await admin.from("application_events").insert({
       application_id: appA.id,
       user_id: aId,
       status: "draft",
       message: "fixture event",
     });
-    await admin.from("job_matches").upsert({ user_id: aId, job_id: jobId, score: 90 });
+    if (eventErr) throw new Error(`event fixture: ${eventErr.message}`);
+    const { error: matchErr } = await admin
+      .from("job_matches")
+      .upsert({ user_id: aId, job_id: jobId, score: 90 });
+    if (matchErr) throw new Error(`match fixture: ${matchErr.message}`);
 
     const signIn = async (email: string): Promise<SupabaseClient> => {
       const client = createClient(url, anonKey, { auth: { persistSession: false } });
@@ -178,8 +185,16 @@ async function main(): Promise<void> {
       await admin.storage.from("resumes").remove([`${id}/resume.pdf`, `${id}/evil.pdf`]);
       await admin.auth.admin.deleteUser(id).catch(() => undefined);
     }
-    if (jobId) await admin.from("jobs").delete().eq("id", jobId);
-    if (boardId) await admin.from("board_sources").delete().eq("id", boardId);
+    // Logged, so a leaked fixture is visible rather than silent — these run
+    // against a real database, and --allow-remote points at a real project.
+    if (jobId) {
+      const { error } = await admin.from("jobs").delete().eq("id", jobId);
+      if (error) console.error(`cleanup: job ${jobId} not removed — ${error.message}`);
+    }
+    if (boardId) {
+      const { error } = await admin.from("board_sources").delete().eq("id", boardId);
+      if (error) console.error(`cleanup: board ${boardId} not removed — ${error.message}`);
+    }
   }
 
   if (failures > 0) {

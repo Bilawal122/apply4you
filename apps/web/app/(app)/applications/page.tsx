@@ -93,10 +93,11 @@ export default async function ApplicationsPage() {
   // Is anything actually consuming the queue? Cheap TTL'd-key read; the page
   // must not claim "filling" while nothing is running (P0-01).
   const worker = await workerHeartbeat();
-  // With a LIVE worker, a >24h unfilled draft is wedged, not pending — fail it
-  // before the queries below so the page never renders the stale lie. A down
-  // worker's drafts are left to self-heal (see lib/abandoned.ts).
-  if (user && worker.alive) await failAbandonedDrafts(user.id);
+  // A >24h unfilled draft is wedged, not pending — but only once a worker has
+  // been up long enough to have actually retried it, which failAbandonedDrafts
+  // checks from the heartbeat. A down (or just-revived) worker's drafts are
+  // left to self-heal (see lib/abandoned.ts).
+  if (user) await failAbandonedDrafts(user.id, worker);
 
   const [{ data: pendingRows }, { data: recentRows }, { data: eventRows }, { data: profileRow }] =
     await Promise.all([

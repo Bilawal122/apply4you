@@ -71,3 +71,12 @@ describe("decodeEntities hardening (ATS-6.1/6.2: one bad posting must not kill a
     expect(decodeEntities("a&#9;b")).toBe("a\tb");
   });
 });
+
+describe("carriage-return entities (regression)", () => {
+  it("folds &#13; into the newline rather than leaving it as visible text", () => {
+    // Rich-text-authored postings encode CRLF as &#13;&#10;, so preserving
+    // the source text put a literal "&#13;" at every line break.
+    expect(decodeEntities("Line1&#13;&#10;Line2")).toBe("Line1\n\nLine2");
+    expect(stripEscapedHtml("&lt;p&gt;Line1&amp;#13;&amp;#10;Line2&lt;/p&gt;")).not.toContain("&#13;");
+  });
+});

@@ -18,6 +18,11 @@ const ENTITIES: Record<string, string> = {
 function safeFromCodePoint(original: string, code: number): string {
   if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff) return original;
   if (code >= 0xd800 && code <= 0xdfff) return original;
+  // CR is the one control that legitimately appears as an entity: rich-text
+  // fields encode CRLF as &#13;&#10;, so preserving the source text would
+  // deposit a literal "&#13;" at every line break. Fold it into the newline
+  // its LF partner already provides.
+  if (code === 0x0d) return "\n";
   if (code < 0x20 && code !== 0x0a && code !== 0x09) return original;
   return String.fromCodePoint(code);
 }

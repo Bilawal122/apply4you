@@ -45,6 +45,8 @@ export async function POST() {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const admin = createAdminClient();
+  // Held outside the try so the post-deletion sweep below can reuse it.
+  let artifactPaths: string[] = [];
 
   try {
     // Resumes live flat under resumes/<uid>/ (resume.pdf and/or resume.docx —
@@ -58,17 +60,17 @@ export async function POST() {
       .eq("user_id", user.id);
     if (appsError) throw new Error(`list applications: ${appsError.message}`);
     if (apps?.length) {
-      const paths = apps.flatMap((a) => [
+      artifactPaths = apps.flatMap((a) => [
         `failures/${a.id}.png`,
         `confirmations/${a.id}.png`,
         `cvs/${a.id}.pdf`,
       ]);
-      for (let i = 0; i < paths.length; i += PAGE) {
+      for (let i = 0; i < artifactPaths.length; i += PAGE) {
         // remove() ignores paths that don't exist — most applications never
         // produced all three artifacts.
         const { error: removeError } = await admin.storage
           .from("artifacts")
-          .remove(paths.slice(i, i + PAGE));
+          .remove(artifactPaths.slice(i, i + PAGE));
         if (removeError) throw new Error(`remove artifacts: ${removeError.message}`);
       }
     }
@@ -89,6 +91,20 @@ export async function POST() {
 
   const { error } = await admin.auth.admin.deleteUser(user.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Second sweep, after the cascade. A submit worker holding one of these
+  // applications can upload a tailored CV or a screenshot in the seconds
+  // between the pass above and this delete — and once the rows cascade, the
+  // application-id-to-user mapping is gone and nothing could ever find those
+  // files again. remove() is idempotent, so re-running the same path list is
+  // free; failures here are logged, not surfaced, because the account is
+  // already gone and the orphan sweep script is the backstop.
+  for (let i = 0; i < artifactPaths.length; i += PAGE) {
+    const { error: sweepError } = await admin.storage
+      .from("artifacts")
+      .remove(artifactPaths.slice(i, i + PAGE));
+    if (sweepError) console.error(`[account/delete] post-deletion sweep: ${sweepError.message}`);
+  }
 
   return NextResponse.json({ deleted: true });
 }

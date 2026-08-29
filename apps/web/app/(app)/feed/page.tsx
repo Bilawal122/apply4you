@@ -240,10 +240,22 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
             {filtered ? "No matches for these filters" : "No unqueued matches right now"}
           </p>
           <p className="mx-auto mt-2.5 max-w-md text-[14.5px] leading-[1.6] text-ink-body">
-            {filtered
-              ? "Try widening your search or clearing filters."
-              : "You've queued everything that fits, or matching hasn't run since your last profile change. New jobs appear as company boards are re-polled."}
+            {hiddenOld > 0
+              ? `Every match right now is older than ${FEED_MAX_AGE_DAYS} days, so none are shown by default.`
+              : filtered
+                ? "Try widening your search or clearing filters."
+                : "You've queued everything that fits, or matching hasn't run since your last profile change. New jobs appear as company boards are re-polled."}
           </p>
+          {/* Without this the toggle was unreachable in exactly the case the
+              gate created: every match hidden, and no way to ask for them. */}
+          {hiddenOld > 0 && (
+            <Link
+              href={ageToggleHref}
+              className="mt-4 inline-block text-[14.5px] font-semibold text-ink underline underline-offset-2"
+            >
+              Show {hiddenOld} older role{hiddenOld === 1 ? "" : "s"}
+            </Link>
+          )}
         </div>
       ) : (
         <>

@@ -129,3 +129,34 @@ describe("ukSponsorRelevant", () => {
     }
   });
 });
+
+describe("compound foreign names containing a UK country (regression)", () => {
+  it("does not read New South Wales / New England as British", () => {
+    // Workable joins [city, state, country], so every NSW role arrives in
+    // exactly this shape. UK_COUNTRY is tested before the non-UK markers, so
+    // a bare /\bwales\b/ made all of them British — badge, +15 boost and
+    // unattended auto-queue included.
+    for (const s of [
+      "Sydney, New South Wales, Australia",
+      "New South Wales",
+      "Newcastle, New South Wales",
+      "Boston, New England",
+    ]) {
+      expect(isUkLocation(s), s).toBe(false);
+      expect(ukSponsorRelevant(s), s).toBe(false);
+    }
+  });
+
+  it("still accepts the genuine UK names those exclusions sit next to", () => {
+    for (const s of ["Cardiff, South Wales", "Swansea, Wales", "London, England", "Bath, England"]) {
+      expect(isUkLocation(s), s).toBe(true);
+      expect(ukSponsorRelevant(s), s).toBe(true);
+    }
+  });
+
+  it("treats the dotted U.S. form as non-UK, like its undotted sibling", () => {
+    for (const s of ["Remote - U.S.", "U.S. Remote", "Remote - US", "Remote (USA)"]) {
+      expect(ukSponsorRelevant(s), s).toBe(false);
+    }
+  });
+});
