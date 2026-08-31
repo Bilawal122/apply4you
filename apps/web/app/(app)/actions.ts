@@ -165,7 +165,13 @@ export async function queueTopMatches(
     .eq("user_id", user.id)
     .is("jobs.closed_at", null)
     .order("score", { ascending: false })
-    .limit(n + appliedJobIds.size);
+    // Over-fetch well past n: the blocklist, sponsorship, location and age
+    // gates below all filter AFTER this window, so a window of exactly n
+    // starves — an onboarding user (0 applied) fetched precisely 10 rows,
+    // and every gated-out row silently shrank the queue below the number
+    // asked for even when eligible matches sat just past the window. The
+    // slice(0, n) after filtering keeps the "top matches" meaning.
+    .limit(Math.max(n * 5, 50) + appliedJobIds.size);
 
   // Sponsorship excludes here rather than down-ranking, unlike ranking. This
   // function spends the user's application budget without asking them job by

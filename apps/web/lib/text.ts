@@ -24,10 +24,27 @@ const ENTITIES: Record<string, string> = {
   rdquo: "”",
 };
 
+/**
+ * Same guard as packages/ats/src/html.ts safeFromCodePoint, for the same
+ * reason at a worse blast radius: String.fromCodePoint throws RangeError on
+ * out-of-range or surrogate references, and this decoder runs inside the
+ * /feed and /jobs/[id] server-component renders — one bad reference in one
+ * stored description would 500 the whole page for every user whose matches
+ * include it. Ingestion now deliberately preserves such references as
+ * literal text, so render-time MUST tolerate them.
+ */
+function safeFromCodePoint(original: string, code: number): string {
+  if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff) return original;
+  if (code >= 0xd800 && code <= 0xdfff) return original;
+  if (code === 0x0d) return "\n"; // CR: fold into the newline its LF partner provides
+  if (code < 0x20 && code !== 0x0a && code !== 0x09) return original;
+  return String.fromCodePoint(code);
+}
+
 function decodeEntities(s: string): string {
   return s
-    .replace(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Number(n)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, n: string) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&#(\d+);/g, (m, n: string) => safeFromCodePoint(m, Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (m, n: string) => safeFromCodePoint(m, parseInt(n, 16)))
     .replace(/&([a-z]+);/gi, (m, name: string) => ENTITIES[name.toLowerCase()] ?? m);
 }
 

@@ -124,7 +124,23 @@ async function reenqueueApprovedApplications(): Promise<void> {
     const queue = submitQueues[ats];
     if (!queue) continue;
     await queue
-      .add("submit-application", { applicationId: row.id }, { jobId: `submit-${row.id}` })
+      .add(
+        "submit-application",
+        { applicationId: row.id },
+        {
+          jobId: `submit-${row.id}`,
+          // The worker-side submit Queues set no defaultJobOptions, so
+          // without these a COMPLETED record is retained under this
+          // deterministic jobId — and a claim-refused run (daily cap, plan
+          // limit, breaker) completes normally. BullMQ then swallows every
+          // future add of the same jobId while reporting success, so the
+          // row could never be re-enqueued again: not by this loop, not by
+          // the user re-approving. Same fix the stranded-drafts re-add
+          // below carries, for the same reason.
+          removeOnComplete: true,
+          removeOnFail: true,
+        },
+      )
       .catch(() => undefined);
     requeued++;
   }

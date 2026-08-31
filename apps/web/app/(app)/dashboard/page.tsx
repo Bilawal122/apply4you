@@ -107,7 +107,11 @@ export default async function DashboardPage() {
     supabase
       .from("applications")
       .select("id", { count: "exact", head: true })
-      .in("status", ["draft", "needs_review"]),
+      .in("status", ["draft", "needs_review"])
+      // A null form_schema was never filled — it is waiting on the worker,
+      // not on the user, and the applications page says so. This count
+      // feeds "waiting for your approval", so it must use the same split.
+      .not("form_schema", "is", null),
     supabase.from("job_matches").select("job_id", { count: "exact", head: true }),
     supabase.from("applications").select("id", { count: "exact", head: true }).eq("status", "failed"),
     supabase.from("subscriptions").select("plan, applications_limit, period_start").single(),

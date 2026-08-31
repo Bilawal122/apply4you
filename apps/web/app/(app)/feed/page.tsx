@@ -33,7 +33,7 @@ interface MatchRow {
     salary_summary: string | null;
     sponsor_verdict: SponsorVerdict | null;
     first_seen_at: string;
-    board_sources: { last_polled_at: string | null } | null;
+    board_sources: { last_polled_at: string | null; last_status: string | null } | null;
   };
 }
 
@@ -80,7 +80,7 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
   let query = supabase
     .from("job_matches")
     .select(
-      "score, reason, jobs!inner(id, title, company, location, apply_url, ats_type, posted_at, first_seen_at, requires_login, sponsor_verdict, salary_min, salary_max, salary_currency, salary_period, salary_summary, board_sources(last_polled_at))",
+      "score, reason, jobs!inner(id, title, company, location, apply_url, ats_type, posted_at, first_seen_at, requires_login, sponsor_verdict, salary_min, salary_max, salary_currency, salary_period, salary_summary, board_sources(last_polled_at, last_status))",
     )
     .is("jobs.closed_at", null)
     .order("score", { ascending: false })
@@ -290,7 +290,11 @@ export default async function FeedPage({ searchParams }: { searchParams: Promise
               // first_seen_at is not null by schema.
               const posted = postedLabel(m.jobs.posted_at) ?? `seen ${postedLabel(m.jobs.first_seen_at)}`;
               const stale = isStaleJob(m.jobs.posted_at, m.jobs.first_seen_at);
-              const checked = checkedLabel(m.jobs.board_sources?.last_polled_at);
+              // Only a SUCCESSFUL poll counts as "checked" — the failure path
+              // stamps last_polled_at too, and a dead board's last attempt is
+              // not evidence the posting was seen open.
+              const board = m.jobs.board_sources;
+              const checked = checkedLabel(board?.last_status === "ok" ? board.last_polled_at : null);
               const salary = formatSalary(m.jobs);
               // Our own rationale outranks the employer's boilerplate; the
               // excerpt only takes the line when there is no reason to show.

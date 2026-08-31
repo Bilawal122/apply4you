@@ -33,7 +33,7 @@ interface JobDetail {
   salary_summary: string | null;
   sponsor_verdict: SponsorVerdict | null;
   first_seen_at: string;
-  board_sources: { last_polled_at: string | null } | null;
+  board_sources: { last_polled_at: string | null; last_status: string | null } | null;
 }
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -86,7 +86,7 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const [{ data: job }, { data: match }, { data: application }] = await Promise.all([
     supabase
       .from("jobs")
-      .select("id, title, company, location, description, apply_url, ats_type, posted_at, first_seen_at, closed_at, sponsor_verdict, salary_min, salary_max, salary_currency, salary_period, salary_summary, board_sources(last_polled_at)")
+      .select("id, title, company, location, description, apply_url, ats_type, posted_at, first_seen_at, closed_at, sponsor_verdict, salary_min, salary_max, salary_currency, salary_period, salary_summary, board_sources(last_polled_at, last_status)")
       .eq("id", id)
       .single<JobDetail>(),
     supabase.from("job_matches").select("score, reason").eq("job_id", id).maybeSingle<{ score: number; reason: string | null }>(),
@@ -99,7 +99,12 @@ export default async function JobDetailPage({ params }: { params: Promise<{ id: 
   const extras = salaryExtras(job);
   const posted = postedLabel(job.posted_at);
   const stale = isStaleJob(job.posted_at, job.first_seen_at);
-  const checked = checkedLabel(job.board_sources?.last_polled_at);
+  // Only a SUCCESSFUL poll counts as "checked" — the failure path stamps
+  // last_polled_at too, and the tooltip promises "the posting was open on
+  // that check", which a failed attempt cannot vouch for.
+  const checked = checkedLabel(
+    job.board_sources?.last_status === "ok" ? job.board_sources.last_polled_at : null,
+  );
 
   return (
     <div>

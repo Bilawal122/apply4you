@@ -235,28 +235,37 @@ export async function queueHealth(): Promise<QueueHealth> {
   }
 
   const worker = await workerHeartbeat();
-  const counts: Record<string, QueueCounts | null> = {};
-  for (const name of HEALTH_QUEUES) {
-    try {
-      const q = queue(name);
-      const jobCounts = await bounded(() => q.getJobCounts("waiting", "active", "failed", "delayed"));
-      let oldestWaitingMs: number | null = null;
-      if ((jobCounts.waiting ?? 0) > 0) {
-        // A page, not the head: cheap insurance against list-order assumptions.
-        const waiting = await bounded(() => q.getWaiting(0, 49));
-        const oldest = Math.min(...waiting.map((j) => j.timestamp ?? Number.POSITIVE_INFINITY));
-        if (Number.isFinite(oldest)) oldestWaitingMs = Date.now() - oldest;
+  // Parallel, not sequential: each queue's reads are individually bounded at
+  // 5s, and a degraded Redis timing out per call made the sequential sum
+  // (5 queues × up to 2 calls) blow past the route's maxDuration of 15s —
+  // the platform then kills the handler mid-flight instead of returning the
+  // partial truth. In parallel the worst case is one bound, not their sum.
+  const perQueue = await Promise.all(
+    HEALTH_QUEUES.map(async (name): Promise<[string, QueueCounts | null]> => {
+      try {
+        const q = queue(name);
+        const jobCounts = await bounded(() => q.getJobCounts("waiting", "active", "failed", "delayed"));
+        let oldestWaitingMs: number | null = null;
+        if ((jobCounts.waiting ?? 0) > 0) {
+          // A page, not the head: cheap insurance against list-order assumptions.
+          const waiting = await bounded(() => q.getWaiting(0, 49));
+          const oldest = Math.min(...waiting.map((j) => j.timestamp ?? Number.POSITIVE_INFINITY));
+          if (Number.isFinite(oldest)) oldestWaitingMs = Date.now() - oldest;
+        }
+        return [
+          name,
+          {
+            waiting: jobCounts.waiting ?? 0,
+            active: jobCounts.active ?? 0,
+            failed: jobCounts.failed ?? 0,
+            delayed: jobCounts.delayed ?? 0,
+            oldestWaitingMs,
+          },
+        ];
+      } catch {
+        return [name, null]; // this queue's stats were unreadable; say so, don't guess
       }
-      counts[name] = {
-        waiting: jobCounts.waiting ?? 0,
-        active: jobCounts.active ?? 0,
-        failed: jobCounts.failed ?? 0,
-        delayed: jobCounts.delayed ?? 0,
-        oldestWaitingMs,
-      };
-    } catch {
-      counts[name] = null; // this queue's stats were unreadable; say so, don't guess
-    }
-  }
-  return { redis: redisPing, worker, queues: counts };
+    }),
+  );
+  return { redis: redisPing, worker, queues: Object.fromEntries(perQueue) };
 }

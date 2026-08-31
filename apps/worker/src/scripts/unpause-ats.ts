@@ -82,7 +82,13 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   for (const id of ids) {
-    await queue.add("submit-application", { applicationId: id }, { jobId: `submit-${id}` });
+    // removeOnComplete/removeOnFail: a retained record under this
+    // deterministic jobId silently swallows every later re-enqueue.
+    await queue.add(
+      "submit-application",
+      { applicationId: id },
+      { jobId: `submit-${id}`, removeOnComplete: true, removeOnFail: true },
+    );
   }
   console.log(`re-enqueued ${ids.length} application(s) to ${queueName}.`);
 }
