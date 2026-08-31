@@ -122,16 +122,40 @@ With the worker off, rows sit in "still filling out" forever while
       no secrets — the health route is deliberately public — just the
       `APP_URL` repository variable.
 
-**Operational side (yours — no code substitutes):**
-- [ ] 🧑 Host the worker 24/7: re-enable Railway auto-deploy for
-      `@apply4you/worker` (Settings → Source; `railway.json` and the
-      Dockerfile are ready; ≥ 1 GB RAM). Point it at the **same**
-      `REDIS_URL` (Railway public proxy) and Supabase project as Vercel.
-      Full procedure with verification steps: DEPLOYMENT.md, "Turning the
-      worker on 24/7".
+**Operational side:**
+- [x] 🤖 **The worker is deployed and running** (2026-08-31 23:54 UTC,
+      Railway `striking-creation` → `@apply4you/worker`, from `master`
+      @ `e2d570e`).
+
+      It was never "just paused". Its last deployment **failed** on
+      2026-07-15 and was never retried — `tsc` rejected five strict-TS
+      index errors in `test-submit-mock.ts`. Commit `8913a11` fixed those
+      weeks ago, so nothing was actually broken; the service simply sat on
+      a failed build while the docs recorded a deliberate pause. Re-attaching
+      the GitHub source rebuilt it from current master, which also restores
+      deploy-on-push. Boot log:
+
+      ```
+      [worker] redis connected (PONG)
+      [embed-job] backfilled 1000 job(s) with no embedding (54 UK)
+      [worker] re-enqueued 37 stranded draft(s)
+      [worker] up
+      ```
+
+      Within two minutes it had filled real applications
+      (`22 fields, 17 resolved -> draft`), and `needs_review` went 18 → 24.
+      Verified safe before deploying: **zero** `approved`/`submitting` rows
+      existed, so nothing could reach a real employer on boot.
 - [ ] 🧑 Set the `APP_URL` repository variable so the watchdog can run.
-- [ ] 🧑 Confirm `/api/health/queue` shows `worker: alive` from the hosted
-      worker, then kill the service and confirm it flips red within 3 min.
+- [ ] 🧑 After merging this branch, confirm `/api/health/queue` shows
+      `worker: alive` — the Redis heartbeat is **this branch's** code, so
+      until it merges the running worker only logs its heartbeat to stdout
+      and the new health endpoint would read `no-consumer`. Merging
+      redeploys both halves together.
+- [ ] 🧑 Expect a batch of resolve failures to settle as `failed`: many of
+      the 37 stranded drafts point at postings that closed during the six
+      weeks they sat there (`404` from Greenhouse/Lever on boot). That is
+      the correct outcome, not a regression.
 - [ ] 🧑 Supabase Pro (or at minimum the weekly keep-alive) before external
       users — the free-tier auto-pause has taken the site down twice.
 

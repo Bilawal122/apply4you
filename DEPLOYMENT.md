@@ -99,6 +99,32 @@ so to test the signup → onboarding flow locally, also add
 
 ---
 
+## Why the worker was not running (root cause, 2026-08-31)
+
+The worker was not merely "paused". Its last deployment **failed**, on
+2026-07-15 at commit `17a1a9b`, and was never retried — so the notes below
+saying auto-deploy was simply switched off were incomplete.
+
+The failure was at `BUILD_IMAGE`: `tsc -p tsconfig.json` rejected five
+strict-TS index errors in `apps/worker/src/scripts/test-submit-mock.ts`
+(`TS2538: Type 'undefined' cannot be used as an index type`). Commit
+`8913a11` fixed exactly that a short time later, so master has built cleanly
+since — nothing ever re-triggered the deploy, and the service sat on its
+failed build for six weeks while DEPLOYMENT.md recorded it as a deliberate
+pause.
+
+Two things worth knowing for next time:
+
+- **The dashboard shows the wrong builder.** The service config reports
+  `RAILPACK`, but the build logs show `FROM node:22-slim` and the exact COPY
+  sequence from `apps/worker/Dockerfile` — the root `railway.json` overrides
+  the dashboard setting at build time, so the Dockerfile (and with it the
+  Chromium install that submission depends on) *is* what gets used. Don't
+  "fix" the dashboard builder to match; it isn't what's running.
+- **A failed build is silent.** Nothing alerted, and the symptom downstream
+  was indistinguishable from an idle queue. That is what
+  `.github/workflows/worker-watchdog.yml` now exists to catch.
+
 ## Turning the worker on 24/7 (the P0 launch blocker)
 
 > **Do this before inviting anyone.** Everything the product promises happens
