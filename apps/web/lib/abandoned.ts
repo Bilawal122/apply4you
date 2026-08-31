@@ -1,5 +1,5 @@
 import { DRAFT_ABANDONED_MS } from "@apply4you/shared";
-import type { WorkerHeartbeat } from "@/lib/queue";
+import { resolveBacklog, type WorkerHeartbeat } from "@/lib/queue";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
@@ -37,6 +37,15 @@ export async function failAbandonedDrafts(
   if (!worker.alive || !worker.startedAt) return 0;
   const uptime = Date.now() - new Date(worker.startedAt).getTime();
   if (!Number.isFinite(uptime) || uptime < WORKER_STEADY_MS) return 0;
+
+  // Uptime alone is not enough. Production carried 37 drafts unfilled for
+  // weeks; the resolve worker drains at concurrency 3 under a 30/min limiter
+  // with a form read and LLM calls per job, so that backlog outlasts any
+  // fixed uptime window. While ANY resolve work is queued or running, a
+  // draft is still on its way — abandoning it here would be wrong and
+  // irreversible. An unreadable depth counts as busy.
+  const backlog = await resolveBacklog();
+  if (backlog === null || backlog > 0) return 0;
 
   const admin = createAdminClient();
   const cutoff = new Date(Date.now() - DRAFT_ABANDONED_MS).toISOString();

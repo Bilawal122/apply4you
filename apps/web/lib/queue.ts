@@ -203,6 +203,32 @@ export async function workerHeartbeat(): Promise<WorkerHeartbeat> {
   }
 }
 
+/**
+ * How much resolve work is still queued or running.
+ *
+ * The abandonment backstop needs this, not just worker liveness. Measured on
+ * production: 37 drafts sat unfilled while the worker was down for weeks. The
+ * resolve worker runs at concurrency 3 with a 30/min limiter and each job
+ * makes a form read plus LLM calls, so that backlog takes far longer than any
+ * fixed "worker has been up a while" window to drain — and failing a draft
+ * that is still queued is irreversible, because resolveApplication skips
+ * anything no longer in `draft`. So: while ANY resolve work is outstanding,
+ * nothing is abandoned.
+ *
+ * Returns null when the depth cannot be read, which callers must treat as
+ * "possibly busy" rather than "empty".
+ */
+export async function resolveBacklog(): Promise<number | null> {
+  try {
+    const counts = await bounded(() =>
+      queue(QUEUES.resolve).getJobCounts("waiting", "active", "delayed"),
+    );
+    return (counts.waiting ?? 0) + (counts.active ?? 0) + (counts.delayed ?? 0);
+  } catch {
+    return null;
+  }
+}
+
 export interface QueueCounts {
   waiting: number;
   active: number;

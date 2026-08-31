@@ -99,7 +99,52 @@ so to test the signup → onboarding flow locally, also add
 
 ---
 
-## Worker → attended locally during dogfood (Railway hosting deliberately paused)
+## Turning the worker on 24/7 (the P0 launch blocker)
+
+> **Do this before inviting anyone.** Everything the product promises happens
+> in the worker; with it off, queueing "works", nothing fills, and the app
+> looks healthy. Measured on prod 2026-08-31: **37 drafts unfilled, the oldest
+> 45 days, and zero applications ever submitted** — that is this switch being
+> off, not a bug.
+
+1. **Preflight the host first** — catches the traps below before anything is
+   queued, and prints a Redis fingerprint so you can eyeball-match it against
+   Vercel's value:
+   ```bash
+   railway run pnpm --filter @apply4you/worker preflight
+   # or locally: pnpm --filter @apply4you/worker exec tsx --env-file=../../.env src/scripts/preflight.ts
+   ```
+   It checks the four env vars (and that the Supabase key really is
+   `service_role`, not the anon key), connects to Redis, writes and reads back
+   a heartbeat probe, queries Supabase, and confirms Chromium is installed.
+   Exit code 0 means the host can run the worker.
+
+2. **Re-enable auto-deploy**: Railway → the `@apply4you/worker` service →
+   Settings → Source → turn auto-deploy back on, then deploy. The four env
+   vars below are unchanged. Pick a plan with **≥ 1 GB RAM**.
+
+3. **Verify it is actually consuming**, not just running:
+   ```bash
+   curl -s https://<prod-domain>/api/health/queue | jq
+   ```
+   `queue: "ok"` requires Redis to answer **and** a worker heartbeat newer than
+   3 minutes. `"no-consumer"` means Redis is fine and the worker is not —
+   which is the failure this endpoint exists to catch, and returns 503.
+
+4. **Prove the alarm works**: stop the Railway service, re-run the curl within
+   ~3 minutes, and confirm it flips to 503 `no-consumer`. Restart it.
+
+5. **Keep it watched**: `.github/workflows/worker-watchdog.yml` polls that
+   endpoint every 15 minutes and fails the workflow (which emails you) when it
+   is unhealthy. It needs one repository variable — Settings → Secrets and
+   variables → Actions → Variables → `APP_URL` = the production origin. No
+   secrets required, because the health route is deliberately public.
+
+Once the worker is live, the 37 stranded drafts re-enqueue themselves within
+5 minutes (`reenqueueStrandedDrafts` runs at boot and on a 5-minute interval),
+and the first poll cycle closes the 73 orphaned jobs left by dead boards.
+
+## Worker → attended locally during dogfood (historical: superseded by the section above)
 
 > **STATUS 2026-07-27** (DECISIONS.md D2): the worker runs **on the founder's
 > own PC, on demand**, not 24/7 on Railway — $0 marginal cost, a residential IP

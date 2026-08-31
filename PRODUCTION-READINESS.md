@@ -34,6 +34,36 @@ pinned `next@16.2.10` package itself:
 
 ---
 
+---
+
+## What production actually looks like right now
+
+Measured against the live Supabase project (`bfsiolrihzwogragktvg`) on
+2026-08-31. This is the state you will meet when you test:
+
+| | |
+|---|---|
+| Applications ever **submitted** | **0** — the core promise has never completed once |
+| Drafts stuck with no form schema | **37**, oldest **45 days** |
+| Applications in `needs_review` | 18, oldest 28 days |
+| Last successful board poll | **18 days ago** — the worker has not run since |
+| Boards | 410 active / 13 dead; **119 have never polled successfully** |
+| Open jobs on dead or deleted boards | **73** (the P1-02 leak, now swept) |
+| Open jobs | 26,388 — of which **44% are over 90 days old** |
+
+Nothing here is a new defect; it is what "the worker is off" looks like from
+the database. All of it resolves itself once the worker is hosted: the 37
+drafts re-enqueue within 5 minutes of boot, the orphaned jobs close on the
+first poll cycle, and the boards resume their 2-hour schedule.
+
+The one thing worth knowing before you test: **44% of the index is older than
+90 days**, so the new freshness gate hides a lot. It was checked against real
+accounts before shipping — every user still has 36–86 visible matches, well
+above the 24 the feed shows, and the rest sit behind the "show older roles"
+toggle rather than disappearing.
+
+---
+
 ## P0 — must pass before any external user
 
 ### P0-01 · Queued applications are not processed (the core blocker)
@@ -71,11 +101,35 @@ With the worker off, rows sit in "still filling out" forever while
       is filling them now" → states what is actually true given worker
       health).
 
+- [x] 🤖 The abandonment backstop will not eat the backlog. Production
+      currently holds **37 drafts with no form schema, the oldest 45 days**.
+      Resolve drains at concurrency 3 under a 30/min limiter, so that
+      backlog outlasts any fixed "worker has been up a while" window — and
+      failing a draft is irreversible, because `resolveApplication` skips
+      anything no longer in `draft`. So abandonment now additionally
+      requires the resolve queue to be **completely empty**, and treats an
+      unreadable depth as busy.
+- [x] 🤖 `pnpm --filter @apply4you/worker preflight` — run it on the host
+      before trusting it. Checks the four env vars (including that the
+      Supabase key is really `service_role`, the mistake that silently
+      subjects the worker to RLS), connects to Redis, writes and reads back
+      a heartbeat probe, queries Supabase, confirms Chromium, and prints a
+      Redis `host:port` fingerprint to compare against Vercel — the
+      DEPLOYMENT.md trap where the two halves point at different instances
+      and everything looks healthy while nothing is processed.
+- [x] 🤖 `.github/workflows/worker-watchdog.yml` polls `/api/health/queue`
+      every 15 minutes and fails (emailing you) when it is unhealthy. Needs
+      no secrets — the health route is deliberately public — just the
+      `APP_URL` repository variable.
+
 **Operational side (yours — no code substitutes):**
 - [ ] 🧑 Host the worker 24/7: re-enable Railway auto-deploy for
       `@apply4you/worker` (Settings → Source; `railway.json` and the
       Dockerfile are ready; ≥ 1 GB RAM). Point it at the **same**
       `REDIS_URL` (Railway public proxy) and Supabase project as Vercel.
+      Full procedure with verification steps: DEPLOYMENT.md, "Turning the
+      worker on 24/7".
+- [ ] 🧑 Set the `APP_URL` repository variable so the watchdog can run.
 - [ ] 🧑 Confirm `/api/health/queue` shows `worker: alive` from the hosted
       worker, then kill the service and confirm it flips red within 3 min.
 - [ ] 🧑 Supabase Pro (or at minimum the weekly keep-alive) before external
@@ -163,12 +217,14 @@ unchanged (they were already honest).
       of silently showing the ATS name.
 - [x] 🤖 "Checked Xh ago" (board `last_polled_at`) now shows on feed cards
       and the job detail page — the freshness signal the audit asked for.
-- [ ] 🤖 Later: mirror the staleness demotion into `match_jobs`' SQL
-      `sort_score` (new migration superseding `0023`) so stale rows also
-      lose *candidate-pool* priority, not just final-ranking priority. Kept
-      out of this branch deliberately: `match_jobs` has been redefined five
-      times and a SQL change should be applied + smoke-tested against a
-      real database, not pushed blind.
+- [x] 🤖 The SQL half: `0026_match_jobs_freshness.sql` mirrors the penalty
+      into `match_jobs`' `sort_score`, so stale rows also lose
+      *candidate-pool* priority rather than just being reordered after the
+      fact. **Applied and measured against production**, user `3a10fe56`:
+      usable feed rows went 46 → 67 of 100 and stale pool entries 80 → 48,
+      for a 0.4-point average relevance cost (68.4 → 68.0). Two other
+      accounts landed at 86 and 71 visible. Derived from `0023` by script,
+      so everything but the added `case` is byte-identical.
 
 ### P1-03 · Raw HTML in job descriptions ✅ code fixed
 
@@ -243,8 +299,13 @@ DB rows cascade-deleted.
 - [x] 🤖 Orphan sweep script for artifacts already stranded by past
       deletions: `apps/worker/src/scripts/purge-orphan-artifacts.ts`.
 - [ ] 🧑 Run the orphan sweep once against prod (`--dry-run` first).
-- [ ] 🤖 Later (P2): include tailored CVs + confirmation screenshots in the
-      `/api/account/export` bundle (currently resume-only).
+- [x] 🤖 Export now matches deletion: `/api/account/export` returns signed
+      links to the tailored CVs, confirmation captures and failure
+      screenshots as well as the resume. The two halves of the data-rights
+      promise had disagreed — deletion removed the CV an employer actually
+      received, and the export could not give it back. Ownership comes from
+      the RLS-scoped query, so the admin client only ever signs the caller's
+      own artifacts.
 
 ### P1-08 · Test coverage & CI ✅ largest gaps closed
 
@@ -281,9 +342,17 @@ DB rows cascade-deleted.
       but has not executed here. Then:
 - [ ] 🤝 Wire it as a CI job (services: supabase CLI + docker) once it has
       passed locally — adding an unverified CI job would just turn CI red.
-- [ ] 🧑 Cheap immediate win: run `mcp`/dashboard advisors
-      (Supabase → Advisors → Security) on the linked project and fix
-      anything it flags.
+- [x] 🤖 Ran the Supabase security advisors against the live project.
+      Eleven functions had a mutable `search_path` (lint 0011) — fixed and
+      **applied** as `0025_function_search_path.sql`; all eleven now pin
+      `public`, matching what `handle_new_user` / `match_jobs` already did.
+      The five "RLS enabled, no policy" notices are INFO and correct as-is:
+      those tables (`ai_usage`, `ats_health`, `check_rate_limit`,
+      `job_embeddings`, `sponsor_staging`) are service-role-only, so no
+      policy means deny-all, which is the intent.
+- [ ] 🧑 Two advisor items need the dashboard, not code: enable **leaked
+      password protection** (Auth → Policies) and, optionally, move the
+      `vector` extension out of `public`.
 
 ### P1-10 · Structured error/empty states (audit checklist item)
 - [x] Already largely present (verified: closed-posting states, enqueue-

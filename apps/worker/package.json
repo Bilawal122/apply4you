@@ -9,6 +9,7 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "seed:boards": "tsx src/scripts/seed-boards.ts",
+    "preflight": "tsx src/scripts/preflight.ts",
     "test": "vitest run"
   },
   "dependencies": {
