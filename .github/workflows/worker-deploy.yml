@@ -1,0 +1,94 @@
+name: Redeploy worker
+
+# Redeploying the worker has been the slowest step in every incident so far,
+# because it lived entirely in the Railway dashboard: whoever noticed the
+# problem had to be the person with the browser tab open. This makes it a
+# button in the repo instead, so a redeploy can be triggered from anywhere
+# that can dispatch a workflow.
+#
+# It is deliberately manual (workflow_dispatch only). The worker is stateful
+# in the way that matters — a restart mid-submission parks that application
+# for human verification, per DECISIONS.md D3 — so redeploying is a decision,
+# never something a push should do on its own.
+#
+# ONE-TIME SETUP: create a Railway *project* token for the production
+# environment of `striking-creation` (Railway → project → Settings → Tokens)
+# and store it as the repository secret RAILWAY_TOKEN. A project token is
+# scoped to that one project and environment, which is the least authority
+# this needs. Also set the repository variable APP_URL, which the watchdog
+# already uses, so the health check below can verify the result.
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: "Railway service to redeploy (name or id)"
+        required: false
+        default: "@apply4you/worker"
+      verify:
+        description: "Poll /api/health/queue afterwards and fail if it is not ok"
+        type: boolean
+        required: false
+        default: true
+
+jobs:
+  redeploy:
+    name: redeploy on Railway
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check the token is present
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          set -uo pipefail
+          if [ -z "${RAILWAY_TOKEN:-}" ]; then
+            echo "::error::Repository secret RAILWAY_TOKEN is not set. Create a Railway project token for the production environment and add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Install the Railway CLI
+        run: npm install -g @railway/cli@4
+
+      - name: Redeploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          SERVICE: ${{ inputs.service }}
+        run: |
+          set -euo pipefail
+          echo "Redeploying service: $SERVICE"
+          railway redeploy --service "$SERVICE" --yes
+
+      # Railway returns from `redeploy` once the deployment is accepted, not
+      # once the container is serving, so give the worker time to boot, connect
+      # to Redis and publish its first heartbeat before judging it.
+      - name: Wait for the worker to publish a heartbeat
+        if: ${{ inputs.verify }}
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          set -uo pipefail
+          if [ -z "${APP_URL:-}" ]; then
+            echo "::warning::Repository variable APP_URL is not set — deployed, but cannot verify. Check /api/health/queue by hand."
+            exit 0
+          fi
+          url="${APP_URL%/}/api/health/queue"
+
+          # Up to ~5 minutes. A cold boot runs the startup reconciliation
+          # (stuck submissions, stranded drafts, embedding backfill) before the
+          # queue settles, so this is not a fast check.
+          for attempt in $(seq 1 20); do
+            sleep 15
+            body=$(curl -sS --max-time 20 -w '\n%{http_code}' "$url" || echo $'\n000')
+            code=$(printf '%s' "$body" | tail -n1)
+            payload=$(printf '%s' "$body" | sed '$d')
+            if [ "$code" = "200" ]; then
+              echo "healthy after $((attempt * 15))s: $payload"
+              exit 0
+            fi
+            echo "attempt $attempt: HTTP $code — $payload"
+          done
+
+          echo "::error::Deployed, but /api/health/queue is still not ok after 5 minutes (HTTP $code)."
+          echo "::error::If \"queue\" reads 'no-consumer' while the worker is demonstrably busy, the worker and the web app are on different Redis instances — compare REDIS_URL on Railway against the Vercel production environment. See RETEST-2026-09-01.md."
+          exit 1
