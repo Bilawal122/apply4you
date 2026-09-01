@@ -41,20 +41,31 @@ pinned `next@16.2.10` package itself:
 Measured against the live Supabase project (`bfsiolrihzwogragktvg`) on
 2026-08-31. This is the state you will meet when you test:
 
-| | |
-|---|---|
-| Applications ever **submitted** | **0** — the core promise has never completed once |
-| Drafts stuck with no form schema | **37**, oldest **45 days** |
-| Applications in `needs_review` | 18, oldest 28 days |
-| Last successful board poll | **18 days ago** — the worker has not run since |
-| Boards | 410 active / 13 dead; **119 have never polled successfully** |
-| Open jobs on dead or deleted boards | **73** (the P1-02 leak, now swept) |
-| Open jobs | 26,388 — of which **44% are over 90 days old** |
+| | before the worker was deployed | after |
+|---|---|---|
+| Drafts stuck with no form schema | **37**, oldest 45 days | **0** |
+| Filled and awaiting your review | 18 | **32** `needs_review` + 22 `draft` |
+| `failed`, each with a stated reason | 3 | 15 |
+| Applications ever **submitted** | **0** | **0** — still gated on the sandbox run (P0-03) |
+| Last successful board poll | 18 days ago | live, 2-hour schedule resumed |
+| Boards | 410 active / 13 dead | unchanged; 119 have still never polled successfully |
+| Open jobs | 26,388 — **44% over 90 days old** | unchanged |
 
-Nothing here is a new defect; it is what "the worker is off" looks like from
-the database. All of it resolves itself once the worker is hosted: the 37
-drafts re-enqueue within 5 minutes of boot, the orphaned jobs close on the
-first poll cycle, and the boards resume their 2-hour schedule.
+The backlog drained completely within minutes of the worker starting. The 12
+new failures are all `404` — postings that closed during the six weeks those
+drafts sat unprocessed — which is the correct outcome, and each carries a
+reason the user can read. (The 3 older `navigation_error` rows predate this:
+applications from 3 and 7 August, from earlier submit attempts. One is the
+UUID-selector `SyntaxError` that `packages/ats/test/adapters.test.ts` was
+later added to guard against structurally.)
+
+**Nothing in the "before" column was a new defect** — it was what "the worker
+is off" looks like from the database. The audit's P0-01 symptom, ten
+applications reading *"still filling out with 0 questions"*, is now
+empirically absent: zero unfilled rows remain in `draft` or `needs_review`.
+
+What has NOT changed: no application has ever been submitted to an employer.
+That is deliberate and still gated on P0-03.
 
 The one thing worth knowing before you test: **44% of the index is older than
 90 days**, so the new freshness gate hides a lot. It was checked against real
