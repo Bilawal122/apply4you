@@ -256,12 +256,27 @@ export interface QueueHealth {
 }
 
 /** The queues a stuck user actually cares about. */
+/**
+ * EVERY queue the worker consumes, not just the user-facing ones.
+ *
+ * This started as resolve + the four submit queues, because those are what a
+ * stuck user feels. That made `consumerObserved` lie: caught live, the worker
+ * was draining ~90 embeddings/min — unmistakably alive — while this reported
+ * `no-consumer`, because sourcing, embedding and matching were not being
+ * looked at. The signal is "is anything consuming ANYTHING", so it has to see
+ * everything. The reads run in parallel, so breadth costs a little Redis
+ * traffic and no latency.
+ */
 const HEALTH_QUEUES = [
   QUEUES.resolve,
   QUEUES.submitGreenhouse,
   QUEUES.submitLever,
   QUEUES.submitAshby,
   QUEUES.submitWorkable,
+  QUEUES.embedding,
+  QUEUES.profileEmbedding,
+  QUEUES.matching,
+  QUEUES.sourcing,
 ] as const;
 
 /** Full operational picture: Redis, consumer liveness, depth and backlog age. */
