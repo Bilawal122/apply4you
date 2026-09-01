@@ -21,12 +21,53 @@ import { queueHealth } from "@/lib/queue";
 export const maxDuration = 15;
 export const dynamic = "force-dynamic";
 
+/**
+ * `no-consumer` and `stale-worker-build` are both 503 on purpose: neither can
+ * confirm a healthy consumer, and an endpoint that goes green on a guess is
+ * the failure this route exists to prevent. They are separated because they
+ * need opposite responses — one is "start the worker", the other is "the
+ * worker is running an old build; redeploy it" — and because reporting the
+ * second as the first already produced one wrong diagnosis: a re-audit read
+ * `no-consumer` and concluded the queue-to-review path was unavailable while
+ * the worker was in fact draining it, simply because that build predated the
+ * heartbeat.
+ */
+function classify(health: Awaited<ReturnType<typeof queueHealth>>): {
+  state: string;
+  detail: string;
+  ok: boolean;
+} {
+  if (!health.redis.ok) {
+    return { state: "unreachable", detail: "Redis did not answer.", ok: false };
+  }
+  if (health.worker.alive) {
+    return { state: "ok", detail: "Redis reachable and a worker heartbeat is fresh.", ok: true };
+  }
+  if (health.consumerObserved) {
+    return {
+      state: "stale-worker-build",
+      detail:
+        "Redis is reachable and jobs are ACTIVE, so a worker is consuming — but it publishes no heartbeat, " +
+        "which means it is running a build older than heartbeat support. Redeploy the worker from current master.",
+      ok: false,
+    };
+  }
+  return {
+    state: "no-consumer",
+    detail:
+      "Redis is reachable but no worker heartbeat and no active jobs — nothing is consuming the queues. " +
+      "Start or redeploy the worker.",
+    ok: false,
+  };
+}
+
 export async function GET() {
   const health = await queueHealth();
-  const ok = health.redis.ok && health.worker.alive;
+  const { state, detail, ok } = classify(health);
   return NextResponse.json(
     {
-      queue: ok ? "ok" : health.redis.ok ? "no-consumer" : "unreachable",
+      queue: state,
+      detail,
       redis: {
         ok: health.redis.ok,
         detail: health.redis.detail,
@@ -36,7 +77,11 @@ export async function GET() {
         alive: health.worker.alive,
         lastSeen: health.worker.lastSeen,
         startedAt: health.worker.startedAt,
+        version: health.worker.version,
       },
+      // Positive evidence of a consumer, independent of the heartbeat: a job
+      // is only `active` once a worker has claimed it.
+      consumerObserved: health.consumerObserved,
       queues: health.queues,
       checkedAt: new Date().toISOString(),
     },

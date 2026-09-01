@@ -35,10 +35,23 @@ jobs:
       # `build` first: packages resolve each other through built dist/, so
       # typecheck and test both depend on it (turbo encodes this, but running
       # it explicitly makes a build break read as a build break).
+      # The canonical origin is prerendered into robots.txt and sitemap.xml at
+      # build time. Supplying it here mirrors what Vercel supplies in
+      # production, so the guard below tests the real code path rather than a
+      # CI-only shape. (turbo.json lists these as build inputs, so changing
+      # them correctly busts the cache.)
       - run: pnpm build
+        env:
+          VERCEL_PROJECT_PRODUCTION_URL: apply4you.vercel.app
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
+
+      # Production served crawlers `http://localhost:3000` from a 200 response:
+      # every status check passed and only the body was wrong. This reads the
+      # generated bodies so that can never ship again.
+      - name: SEO canonical origin
+        run: node scripts/check-seo-origin.mjs
 
   submit-machinery:
     name: submit machinery (mock ATS)

@@ -176,6 +176,8 @@ export interface WorkerHeartbeat {
   alive: boolean;
   lastSeen: string | null;
   startedAt: string | null;
+  /** Short commit SHA of the running worker, when it publishes one. */
+  version: string | null;
 }
 
 /**
@@ -189,17 +191,18 @@ export interface WorkerHeartbeat {
 export async function workerHeartbeat(): Promise<WorkerHeartbeat> {
   try {
     const raw = await bounded(() => redis().get(WORKER_HEARTBEAT_KEY));
-    if (!raw) return { alive: false, lastSeen: null, startedAt: null };
-    const beat = JSON.parse(raw) as { at?: string; startedAt?: string };
+    if (!raw) return { alive: false, lastSeen: null, startedAt: null, version: null };
+    const beat = JSON.parse(raw) as { at?: string; startedAt?: string; version?: string };
     const at = typeof beat.at === "string" ? beat.at : null;
     const age = at ? Date.now() - new Date(at).getTime() : Number.POSITIVE_INFINITY;
     return {
       alive: Number.isFinite(age) && age < WORKER_HEARTBEAT_STALE_MS,
       lastSeen: at,
       startedAt: typeof beat.startedAt === "string" ? beat.startedAt : null,
+      version: typeof beat.version === "string" ? beat.version : null,
     };
   } catch {
-    return { alive: false, lastSeen: null, startedAt: null };
+    return { alive: false, lastSeen: null, startedAt: null, version: null };
   }
 }
 
@@ -242,6 +245,14 @@ export interface QueueHealth {
   redis: { ok: boolean; detail: string; latencyMs: number };
   worker: WorkerHeartbeat;
   queues: Record<string, QueueCounts | null>;
+  /**
+   * A job is only `active` once a worker has claimed it, so this is positive
+   * proof that SOMETHING is consuming — independent of the heartbeat. It
+   * exists to separate the two cases that used to look identical: a worker
+   * running a build older than heartbeat support (consuming, no heartbeat)
+   * and no worker at all (no heartbeat, nothing moving).
+   */
+  consumerObserved: boolean;
 }
 
 /** The queues a stuck user actually cares about. */
@@ -257,7 +268,12 @@ const HEALTH_QUEUES = [
 export async function queueHealth(): Promise<QueueHealth> {
   const redisPing = await pingQueue();
   if (!redisPing.ok) {
-    return { redis: redisPing, worker: { alive: false, lastSeen: null, startedAt: null }, queues: {} };
+    return {
+      redis: redisPing,
+      worker: { alive: false, lastSeen: null, startedAt: null, version: null },
+      queues: {},
+      consumerObserved: false,
+    };
   }
 
   const worker = await workerHeartbeat();
@@ -293,5 +309,7 @@ export async function queueHealth(): Promise<QueueHealth> {
       }
     }),
   );
-  return { redis: redisPing, worker, queues: Object.fromEntries(perQueue) };
+  const queues = Object.fromEntries(perQueue);
+  const consumerObserved = Object.values(queues).some((c) => (c?.active ?? 0) > 0);
+  return { redis: redisPing, worker, queues, consumerObserved };
 }

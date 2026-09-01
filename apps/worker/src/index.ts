@@ -202,6 +202,18 @@ async function reenqueueStrandedDrafts(): Promise<void> {
 const startedAt = new Date().toISOString();
 
 /**
+ * Which build is actually running. Published in the heartbeat because a
+ * worker deployed from an older commit is invisible otherwise: it processes
+ * work perfectly while writing no heartbeat, so the health endpoint reports
+ * exactly what a dead worker reports. That cost a re-audit a false P0 —
+ * "the core queue-to-review path is currently unavailable" while the worker
+ * was in fact draining the queue. Railway supplies the SHA; the fallback
+ * keeps this honest rather than inventing a value.
+ */
+const workerVersion =
+  process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? process.env.GIT_COMMIT_SHA?.slice(0, 7) ?? "unknown";
+
+/**
  * The heartbeat the rest of the system can actually see. The old heartbeat
  * was a console.log — visible only to whoever was watching this process's
  * stdout, which is nobody when the worker silently dies. This key is what
@@ -213,7 +225,12 @@ async function writeHeartbeat(): Promise<void> {
   try {
     await connection.set(
       WORKER_HEARTBEAT_KEY,
-      JSON.stringify({ at: new Date().toISOString(), startedAt, pid: process.pid }),
+      JSON.stringify({
+        at: new Date().toISOString(),
+        startedAt,
+        pid: process.pid,
+        version: workerVersion,
+      }),
       "EX",
       WORKER_HEARTBEAT_TTL_SECONDS,
     );

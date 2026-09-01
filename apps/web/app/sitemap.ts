@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
+import { resolveOrigin } from "@/lib/origin";
 
-const base = (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+const base = resolveOrigin();
 
 export default function sitemap(): MetadataRoute.Sitemap {
   return [

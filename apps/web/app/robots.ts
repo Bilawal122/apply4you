@@ -1,8 +1,9 @@
 import type { MetadataRoute } from "next";
+import { resolveOrigin } from "@/lib/origin";
 
-// APP_URL is the canonical origin (set on Vercel per DEPLOYMENT.md); the
-// fallback keeps the file valid in local dev where it may be unset.
-const base = (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+// Never a bare localhost fallback here — see lib/origin.ts for why production
+// was serving crawlers http://localhost:3000.
+const base = resolveOrigin();
 
 export default function robots(): MetadataRoute.Robots {
   return {

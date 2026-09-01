@@ -46,5 +46,5 @@ jobs:
             [ $attempt -eq 1 ] && sleep 30
           done
 
-          echo "::error::Worker/queue unhealthy (HTTP $code). 'no-consumer' means Redis is reachable but no worker is processing — check the Railway service."
+          echo "::error::Worker/queue unhealthy (HTTP $code). Read the \"queue\" field: 'no-consumer' = nothing is processing, start the worker; 'stale-worker-build' = a worker IS consuming but publishes no heartbeat, so redeploy it from current master; 'unreachable' = Redis itself is down."
           exit 1

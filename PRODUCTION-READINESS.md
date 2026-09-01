@@ -293,12 +293,21 @@ Folded into P0-01 above — heartbeat, depths, oldest-job age, 503-on-stale.
 
 - [x] 🤖 `app/robots.ts` (allows public pages, disallows the authed app +
       `/api/` + `/update-password`) and `app/sitemap.ts` (`/`, `/check`,
-      `/privacy`, `/terms`) — both driven by `APP_URL`.
+      `/privacy`, `/terms`).
+- [x] 🤖 **Both were still wrong in production** until the 1 Sept re-test
+      caught it: they returned 200 while telling crawlers to visit
+      `http://localhost:3000`, because `APP_URL` is unset on Vercel and the
+      dev fallback became the published answer. Now resolved through
+      `lib/origin.ts` (APP_URL → Vercel's own origin → localhost only off a
+      deployment), with 11 tests and a CI guard that reads the generated
+      bodies. See [RETEST-2026-09-01.md](RETEST-2026-09-01.md).
 - [x] 🤖 Proxy matcher excludes both paths (also skips the Supabase
       round-trip on every crawler hit) + belt-and-braces `isPublic` entries.
-- [ ] 🧑 After deploy: `curl -sI https://<prod-domain>/robots.txt` → 200
-      text/plain; same for `/sitemap.xml` → 200 XML. Note `APP_URL` must be
-      set on Vercel (it already is per DEPLOYMENT.md).
+- [ ] 🧑 **Set `APP_URL` in the Vercel Production environment.** DEPLOYMENT.md
+      claimed it was already set; the 1 Sept re-test proved it is not. The
+      code no longer degrades to localhost without it, but only `APP_URL` can
+      name a custom domain. Then check the *bodies*, not just the status:
+      `curl -s https://<prod-domain>/robots.txt` must contain no `localhost`.
 
 ### P1-06 · Placeholder privacy contact ✅ code fixed (mailbox is yours)
 
