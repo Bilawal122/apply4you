@@ -15,12 +15,13 @@ import {
   TailoredCvSchema,
   resolveTailoredCv,
 } from "@apply4you/shared";
-import { getAdapter, type JobRef, type LocalFile } from "@apply4you/ats";
-import { workerConnection } from "../queues.js";
+import { AtsHttpError, getAdapter, type JobRef, type LocalFile } from "@apply4you/ats";
+import { queues, workerConnection } from "../queues.js";
 import { supabaseAdmin } from "../supabase.js";
 import { withBrowserContext } from "../browser/pool.js";
 import { renderCvPdf } from "../packet/render-cv.js";
 import { loadProfileAndPrefs } from "../profile-data.js";
+import { diffFormSchema } from "../preflight.js";
 import { notifyFailed, notifySubmitted } from "../notify.js";
 
 type SubmitData = { applicationId: string };
@@ -240,7 +241,7 @@ async function submitApplication(applicationId: string): Promise<void> {
     description: string | null;
     board_sources: { slug: string } | null;
   };
-  const fields = (app.form_schema ?? []) as Field[];
+  let fields = (app.form_schema ?? []) as Field[];
   const values = (app.resolved_fields ?? {}) as ResolvedValues;
 
   const fail = async (reason: string, detail?: string): Promise<void> => {
@@ -351,6 +352,74 @@ async function submitApplication(applicationId: string): Promise<void> {
     boardSlug: jobRow.board_sources?.slug ?? "",
   };
   const url = adapter.fillUrl?.(jobRef) ?? jobRef.applyUrl;
+
+  // Form-drift guard (DECISIONS.md D3.6). `form_schema` is what the form looked
+  // like when the application was queued; the employer can edit it any time
+  // after. A Stripe posting queued 7 July had two custom education questions
+  // replaced by the built-in education block and gained a required location
+  // field by 18 August — the stored schema still asked for controls that no
+  // longer existed and knew nothing about the three required ones that did.
+  // The fill would have timed out on the ghosts, skipped the newcomers, and
+  // clicked submit with three required fields blank. Re-read the live form
+  // (one API call, no browser) and refuse to fill from a schema the employer
+  // has since changed in a way the user has not seen.
+  try {
+    const live = await adapter.readForm(jobRef);
+    const drift = diffFormSchema(fields, live, values);
+    if (drift.newRequiredUnanswered.length > 0) {
+      const names = drift.newRequiredUnanswered.map((f) => f.label.slice(0, 40)).join(", ").slice(0, 300);
+      // Back to draft with the live schema, and let the resolver fill what it
+      // can — it lands in needs_review for whatever is left, exactly as a
+      // freshly queued application would. Guarded on `submitting` so a
+      // concurrent transition is never overwritten.
+      await db
+        .from("applications")
+        .update({ status: "draft", form_schema: live })
+        .eq("id", applicationId)
+        .eq("status", "submitting");
+      await logEvent(
+        applicationId,
+        app.user_id,
+        "draft",
+        `Not sent — the employer changed this form since you queued it (${drift.newRequiredUnanswered.length} new required question(s): ${names}). Re-checking your answers; please review again.`,
+      );
+      // Unique id: BullMQ silently no-ops a re-add against a retained
+      // `resolve-<id>` record, and the web app's first resolve used that id.
+      await queues.resolve.add(
+        "resolve-application",
+        { applicationId },
+        { jobId: `resolve-${applicationId}-form-changed-${Date.now()}` },
+      );
+      await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+      console.log(
+        `[submit] ${applicationId}: not submitting (form changed since queued: ${drift.newRequiredUnanswered.length} new required, ${drift.removed.length} removed)`,
+      );
+      return;
+    }
+    if (drift.removed.length > 0 || drift.added.length > 0) {
+      await logEvent(
+        applicationId,
+        app.user_id,
+        "submitting",
+        `The employer changed this form since you queued it — ${drift.removed.length} question(s) removed, ${drift.added.length} added; every required question is answered`,
+      );
+    }
+    fields = drift.fields;
+  } catch (err) {
+    if (err instanceof AtsHttpError && err.status === 404) {
+      // The posting is gone from the board API: the staleness guard, one step
+      // earlier and without opening a browser at it.
+      await db.from("jobs").update({ closed_at: new Date().toISOString() }).eq("id", claim.jobId);
+      await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+      await fail("posting_closed", "posting closed before submission");
+      return;
+    }
+    // A transient read failure is not drift. Proceed on the stored schema —
+    // the browser-side staleness guard and the employer's own validation
+    // still stand behind it — but say so, so a later form_error has a trail.
+    console.error(`[submit] ${applicationId}: live form re-read failed, filling from stored schema:`, String(err).slice(0, 200));
+    await logEvent(applicationId, app.user_id, "submitting", "Could not re-check the live form; filling from the version you reviewed");
+  }
 
   await logEvent(applicationId, app.user_id, "submitting", "Opening the application form");
 

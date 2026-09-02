@@ -5,14 +5,28 @@ import { chromium } from "playwright";
 import type { Field, ResolvedValues } from "@apply4you/shared";
 import { greenhouseAdapter, type JobRef } from "@apply4you/ats";
 import { supabaseAdmin } from "../supabase.js";
+import { diffFormSchema } from "../preflight.js";
 
 /**
  * Dev utility: DRY-RUN fill of a real Greenhouse form. Types into the live
  * page exactly as the submit worker would, then STOPS — the submit button is
  * never clicked. Verifies locators, combobox handling, and file upload.
+ *
+ * `--fresh` re-reads the live form first and diffs it against the stored
+ * schema, the same check the submit worker now runs, then fills from the live
+ * schema. Without it the run fills from `form_schema` as stored — useful for
+ * reproducing what an old application would have done.
  */
 
-const APPLICATION_ID = process.argv[2] ?? "93fd3d71-1e27-4cf3-87e5-4c76e285d89d";
+const APPLICATION_ID = process.argv.find((a) => !a.startsWith("--") && /^[0-9a-f-]{36}$/.test(a)) ?? "93fd3d71-1e27-4cf3-87e5-4c76e285d89d";
+const FRESH = process.argv.includes("--fresh");
+
+/** Dry-run stand-ins for controls the synthetic profile has no answer for. Never written back. */
+const DRY_RUN_STUBS: Record<string, string> = {
+  "candidate-location": "San Francisco, CA",
+  "school--0": "Stanford University",
+  "degree--0": "Bachelor's Degree",
+};
 
 async function main(): Promise<void> {
   const db = supabaseAdmin();
@@ -29,7 +43,7 @@ async function main(): Promise<void> {
     apply_url: string;
     board_sources: { slug: string } | null;
   };
-  const fields = (app.form_schema ?? []) as Field[];
+  let fields = (app.form_schema ?? []) as Field[];
   const values = { ...(app.resolved_fields ?? {}) } as ResolvedValues;
 
   // Dry-run only: pretend the user answered the two open questions so we can
@@ -46,6 +60,21 @@ async function main(): Promise<void> {
     applyUrl: jobRow.apply_url,
     boardSlug: jobRow.board_sources?.slug ?? "stripe",
   };
+  if (FRESH) {
+    const live = await greenhouseAdapter.readForm(jobRef);
+    const drift = diffFormSchema(fields, live, values);
+    console.log(
+      `form drift vs stored schema: +${drift.added.length} added, -${drift.removed.length} removed, ${drift.newRequiredUnanswered.length} new required unanswered`,
+    );
+    for (const f of drift.added) console.log(`  + [${f.type}${f.required ? "*" : ""}] ${f.id} :: ${f.label.slice(0, 60)}`);
+    for (const f of drift.removed) console.log(`  - [${f.type}${f.required ? "*" : ""}] ${f.id} :: ${f.label.slice(0, 60)}`);
+    if (drift.newRequiredUnanswered.length > 0) {
+      console.log("  (the submit worker would park this application for review here — dry run continues with stubs)");
+      for (const f of drift.newRequiredUnanswered) if (DRY_RUN_STUBS[f.id]) values[f.id] = DRY_RUN_STUBS[f.id]!;
+    }
+    fields = drift.fields;
+  }
+
   const url = greenhouseAdapter.fillUrl!(jobRef);
   console.log(`opening ${url}`);
 
