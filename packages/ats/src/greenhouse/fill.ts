@@ -110,9 +110,27 @@ async function fillOneField(page: Page, field: Field, value: string): Promise<vo
   if (tag === "select") {
     await control.selectOption({ label: value });
     await humanPause();
-  } else {
-    await typeInto(control, value);
+    return;
   }
+  // An autocomplete text input (the candidate location box) only validates
+  // once a suggestion is chosen: `fill()` sets the text without firing the
+  // lookup, and Greenhouse then rejects the form with "select a location from
+  // the list". Type it like a person and take the first suggestion.
+  const role = await control.getAttribute("role").catch(() => null);
+  if (role === "combobox") {
+    await typeInto(control, value, { reactSafe: true });
+    const suggestion = page.getByRole("option").first();
+    const appeared = await suggestion
+      .waitFor({ state: "visible", timeout: 2500 })
+      .then(() => true)
+      .catch(() => false);
+    if (appeared) {
+      await suggestion.click({ timeout: 3000 }).catch(() => undefined);
+      await humanPause();
+    }
+    return;
+  }
+  await typeInto(control, value);
 }
 
 export async function submitGreenhouse(page: Page): Promise<SubmitResult> {

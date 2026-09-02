@@ -52,6 +52,8 @@ Worker operations (from `apps/worker`, need its env):
 ```bash
 pnpm --filter @apply4you/worker preflight   # env + Redis fingerprint, no writes
 pnpm --filter @apply4you/worker test-rls    # refuses non-local Supabase without --allow-remote
+pnpm --filter @apply4you/worker exec tsx --env-file=.env src/scripts/test-fill-dry-run.ts --fresh [applicationId]
+                                            # fills a live Greenhouse form from the LIVE schema, never clicks submit
 ```
 
 CI (`.github/workflows/ci.yml`) pins Node 22 and runs build → typecheck →
@@ -73,7 +75,10 @@ meaningful against a realistic build.
 
 Railway builds the worker from the **root `railway.json`**
 (`builder: DOCKERFILE`, `apps/worker/Dockerfile`) — this overrides what the
-dashboard displays, which has caused confusion before. The service has watch
+dashboard displays, which has caused confusion before (the build log's
+`[runtime 2/3] … playwright install` lines are the Dockerfile stages). The
+service's `startCommand` (`pnpm --filter @apply4you/worker start`) does
+override the Dockerfile `CMD`, which is why the deploy log opens with corepack. The service has watch
 paths: a commit touching only `apps/web` or docs is deliberately `SKIPPED`,
 which is correct behaviour and not a failed deploy.
 
@@ -83,33 +88,49 @@ answers *and* a worker heartbeat is fresh. It distinguishes `unreachable`
 (jobs active but no heartbeat → redeploy). All three stay 503 on purpose: an
 endpoint that goes green on an inference is the failure it exists to prevent.
 
-## Live production state — as of 2026-09-02 00:15 UTC
+## Live production state — as of 2026-09-02 05:20 UTC
 
-**Worker: healthy.** Running `02455e7`, deployed 2026-09-01 01:08 UTC.
-Heartbeating every 60s, sourcing normally. No worker-affecting commit exists
-after `02455e7`, so **a redeploy right now is a no-op** — it already carries
-the heartbeat, the per-worker Redis connections and the 5-minute reconcilers.
+**Worker: healthy, and on the right Redis.** Deployment `3e6182e5` (commit
+`9119cb9`), heartbeating every 60s with its commit SHA, sourcing normally.
+`/api/health/queue` reads that heartbeat: `queue: ok, worker.version: 9119cb9`.
 
-**Open P0: `REDIS_URL` differs between Vercel and Railway.** The worker
-heartbeats into the Railway `Redis` service every minute; Vercel's
-`/api/health/queue` reports `worker.alive: false, lastSeen: null` because it
-is reading a different instance. Both observations are correct.
+**The Redis P0 is closed — and the earlier diagnosis was inverted.** The
+worker's `REDIS_URL` was a pasted literal pointing at a *different Redis
+server*; Vercel and `.env` were already on the project's Redis service
+(`sakura.proxy.rlwy.net:14056` is that service's own TCP proxy). Proven, not
+inferred: with no local worker running, the heartbeat on the project Redis
+carried a container pid and the deployed SHA, and a `match-user` job enqueued
+from the website's side was processed by the Railway worker 31s later. The
+worker's `REDIS_URL` is now the reference `${{Redis.REDIS_URL}}` (private
+networking), so it cannot drift again. Nothing on the abandoned instance is
+lost — `reenqueueStrandedDrafts` and the embedding reconcilers rebuild queue
+state from Postgres at boot and every 5 minutes.
 
-Everything the *website* enqueues therefore reaches no consumer:
+**Sponsor register: current.** It had been frozen at 2026-08-03 for a month:
+`finalize_sponsor_swap` rewrites ~142k rows and PostgREST ran it as
+`service_role`, which inherited authenticator's 8s `statement_timeout`.
+Migration `0027` sets `service_role` to 60s (applied; anon/authenticated
+untouched). Register is 2026-09-01, 142,528 rows, 17,963 job verdicts.
 
-| Queue | Waiting | Oldest | Meaning |
-|---|---|---|---|
-| `resolve` | 22 | 5.8 d | apply clicks — and there are exactly 22 `draft` applications |
-| `submit-workable` | 1 | 5.8 d | an approved application no employer ever received |
-| `profile-embedding` | 4 | 4.0 d | those users cannot be matched at all until it runs |
+**Submission path: form-drift guard added.** `form_schema` is captured when
+an application is queued; the employer can change the form afterwards. A Stripe
+posting queued 7 July had two custom education questions replaced by the
+built-in Education block and gained a required Location field by 18 August —
+the stored schema would have timed out on ghosts and submitted three required
+fields blank. `submitApplication` now re-reads the live form before opening a
+browser and parks back to `draft` (re-resolving, then `needs_review`) when a
+required question the user never saw has no answer. The Greenhouse reader also
+maps `location_questions` and the `education_required` flag, which it never
+saw before. Verified on the live Stripe form with `test-fill-dry-run.ts --fresh`.
 
-**The fix** (needs dashboard access; values are redacted to OAuth callers):
-set Vercel's production `REDIS_URL` to the Railway Redis service's
-`REDIS_PUBLIC_URL` (the `sakura.proxy.rlwy.net:14056` proxy above), then
-redeploy the web app. The worker keeps its internal hostname — private
-networking is faster and free. The 22 stranded jobs are not lost by
-switching: the worker's `reenqueueStrandedDrafts` sweep rebuilds them from
-Postgres within five minutes.
+**D3 gate: still open.** No self-owned sandbox board exists, and `SENTRY_DSN`
+is not set on the worker service (D3.8 precondition). Zero submissions have
+ever been made; the mock harness, pollers, form readers, RLS suite (20/20,
+run with `--allow-remote`, cleaned up) and the live dry-run fill all pass.
+
+Also open: one orphaned resume in Storage (owner deleted; `purge-orphan-artifacts.ts`
+covers `artifacts` only, not `resumes`); Supabase leaked-password protection
+is off; 24 `embedding` and 7 `matching` failed jobs predating 2 Sept.
 
 Full history and evidence: [RETEST-2026-09-01.md](RETEST-2026-09-01.md).
 Standing roadmap: [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md).
@@ -149,6 +170,18 @@ Standing roadmap: [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md).
   project a "dead" worker was processing hundreds of jobs a minute.
 - **`turbo.json` must declare env vars the build bakes in**, or turbo replays
   a cached build made with different values and guards check stale artifacts.
+- **The form you reviewed is not necessarily the form you submit to.**
+  Employers edit postings after you queue them. Fill from a live re-read and
+  refuse when a required question the user never saw has no answer — never
+  from the stored schema alone (`diffFormSchema`, `apps/worker/src/preflight.ts`).
+- **A Greenhouse form has fields the questions API does not list.** Location
+  and Education are top-level flags with their own DOM ids
+  (`candidate-location`, `school--0`, `degree--0`), not `questions` entries.
+- **`set local statement_timeout` cannot rescue a running RPC.** The timeout is
+  armed when the outer statement starts; only a role-level setting, applied by
+  PostgREST at transaction start, changes the ceiling. Tested, not assumed.
+- **A heartbeat on *a* Redis is not a heartbeat on *the* Redis.** Compare the
+  pid/SHA in the key against the deploy log before trusting either side.
 
 ## Doc map
 

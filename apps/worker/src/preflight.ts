@@ -1,6 +1,7 @@
 import {
   FILLABLE_FIELD_TYPES,
   isDemographicField,
+  isExcludedFromResolution,
   type Field,
   type ResolvedValues,
   type UnresolvedField,
@@ -46,4 +47,40 @@ export function finalizeResolution(
 
   const status = unresolved.some((u) => u.required) ? "needs_review" : "draft";
   return { resolvedFields, unresolved, status };
+}
+
+/**
+ * Submit-time form-drift check (DECISIONS.md D3.6), pure so it is testable.
+ *
+ * `stored` is the schema the user reviewed and approved against; `live` is
+ * what the employer's form asks for right now. The fill must run against
+ * `live` — controls that no longer exist only time out, and controls the
+ * stored schema never knew about are the ones that make the employer's
+ * validation reject the submission.
+ *
+ * The one outcome this refuses is a required question the user has never
+ * seen and has no answer for: `newRequiredUnanswered`. Files, the paste-resume
+ * textarea and demographic questions are excluded from that judgement exactly
+ * as they are from resolution — a new EEOC question is not a reason to park,
+ * and we would never answer it anyway.
+ */
+export function diffFormSchema(
+  stored: Field[],
+  live: Field[],
+  values: ResolvedValues,
+): {
+  /** The schema to fill from: `live`, always. */
+  fields: Field[];
+  added: Field[];
+  removed: Field[];
+  newRequiredUnanswered: Field[];
+} {
+  const storedIds = new Set(stored.map((f) => f.id));
+  const liveIds = new Set(live.map((f) => f.id));
+  const added = live.filter((f) => !storedIds.has(f.id));
+  const removed = stored.filter((f) => !liveIds.has(f.id));
+  const newRequiredUnanswered = added.filter(
+    (f) => f.required && !isExcludedFromResolution(f) && (values[f.id] ?? null) === null,
+  );
+  return { fields: live, added, removed, newRequiredUnanswered };
 }

@@ -15,17 +15,5 @@
   "devDependencies": {
     "turbo": "^2.5.4",
     "typescript": "^5.8.3"
-  },
-  "pnpm": {
-    "overrides": {
-      "ioredis": "^5.11.1"
-    },
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "sharp",
-      "msgpackr-extract",
-      "protobufjs",
-      "unrs-resolver"
-    ]
   }
 }
