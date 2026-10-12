@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { resolveAppUrl } from "@/lib/origin";
 import { createClient } from "@/lib/supabase/server";
 
 export type AuthState = { error: string } | { confirmEmail: true } | null;
@@ -22,13 +23,12 @@ export async function signUp(_prev: AuthState, formData: FormData): Promise<Auth
   if (password.length < 8) return { error: "Password must be at least 8 characters." };
 
   const supabase = await createClient();
-  const appUrl = process.env.APP_URL ?? "http://localhost:3000";
   // The confirmation link must land new users in the onboarding wizard, not
   // the (empty) feed — this is where "ask me everything" starts.
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: `${appUrl}/auth/confirm?next=/onboarding` },
+    options: { emailRedirectTo: resolveAppUrl("/auth/confirm?next=/onboarding") },
   });
   if (error) return { error: error.message };
 
@@ -52,9 +52,8 @@ export async function requestPasswordReset(_prev: ResetState, formData: FormData
   if (!email) return { error: "Enter your email address." };
 
   const supabase = await createClient();
-  const appUrl = process.env.APP_URL ?? "http://localhost:3000";
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${appUrl}/auth/confirm?next=/update-password`,
+    redirectTo: resolveAppUrl("/auth/confirm?next=/update-password"),
   });
   // Same response whether or not the account exists — no user enumeration.
   if (error && !/rate/i.test(error.message)) {

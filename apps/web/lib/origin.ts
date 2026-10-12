@@ -69,6 +69,12 @@ export function resolveOrigin(env?: OriginEnv): string {
   return LOCAL_ORIGIN;
 }
 
+/** Build an absolute application URL from the same deployment-aware origin. */
+export function resolveAppUrl(path: string, env?: OriginEnv): string {
+  const pathname = path.startsWith("/") ? path : `/${path}`;
+  return `${resolveOrigin(env)}${pathname}`;
+}
+
 /**
  * True when the resolved origin is not fit to publish. Used by the build-time
  * guard so a misconfigured deploy fails loudly instead of quietly telling
