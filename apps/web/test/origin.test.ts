@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isPublishableOrigin, resolveOrigin } from "../lib/origin";
+import { isPublishableOrigin, resolveAppUrl, resolveOrigin } from "../lib/origin";
 
 describe("resolveOrigin (P1-01 regression)", () => {
   it("prefers an explicit APP_URL and strips trailing slashes", () => {
@@ -68,5 +68,20 @@ describe("isPublishableOrigin", () => {
 
   it("does not reject a hostname that merely contains the word localhost", () => {
     expect(isPublishableOrigin("https://localhost-tools.example.com")).toBe(true);
+  });
+});
+
+describe("resolveAppUrl", () => {
+  it("uses Vercel's production origin for auth callback URLs when APP_URL is absent", () => {
+    expect(
+      resolveAppUrl("/auth/confirm?next=/onboarding", {
+        VERCEL_PROJECT_PRODUCTION_URL: "apply4you.vercel.app",
+      }),
+    ).toBe("https://apply4you.vercel.app/auth/confirm?next=/onboarding");
+  });
+
+  it("uses an explicit canonical origin for password-reset URLs", () => {
+    expect(resolveAppUrl("/auth/confirm?next=/update-password", { APP_URL: "https://apply4you.vercel.app/" }))
+      .toBe("https://apply4you.vercel.app/auth/confirm?next=/update-password");
   });
 });
