@@ -18,6 +18,30 @@ declare global {
 }
 
 /**
+ * Retry Redis reconnects for the lifetime of a warm Vercel runtime. Requests
+ * still fail fast: maxRetriesPerRequest, commandTimeout, and bounded() limit
+ * how long an individual invocation can wait. Returning null here would leave
+ * the module-scoped client permanently in ioredis' "end" state, where the
+ * global cache would keep handing the dead connection to later invocations.
+ */
+export function queueRedisRetryDelay(times: number): number {
+  return Math.min(times * 200, 1_000);
+}
+
+export const QUEUE_REDIS_OPTIONS = {
+  // Fail an individual command rather than retrying it into the void.
+  maxRetriesPerRequest: 2,
+  // Keep one command from outliving its serverless request.
+  commandTimeout: 4_000,
+  connectTimeout: 4_000,
+  // Keep the cached client recoverable after a transient proxy reset.
+  retryStrategy: queueRedisRetryDelay,
+  // A cold start may issue its first command before the socket is ready;
+  // commandTimeout and maxRetriesPerRequest still bound that request.
+  enableOfflineQueue: true,
+};
+
+/**
  * The PRODUCER connection. Its settings are deliberately the opposite of the
  * worker's, and getting that backwards took down profile saving in production.
  *
@@ -36,18 +60,7 @@ declare global {
  */
 function redis(): Redis {
   if (!globalThis.__queueRedis) {
-    globalThis.__queueRedis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", {
-      // Fail the command rather than retrying it into the void.
-      maxRetriesPerRequest: 2,
-      // A command may never outlive the request that issued it.
-      commandTimeout: 4_000,
-      connectTimeout: 4_000,
-      // Give up reconnecting quickly; a fresh invocation will make a new client.
-      retryStrategy: (times: number) => (times > 2 ? null : Math.min(times * 200, 600)),
-      // Keep the offline queue: on a cold start the first command legitimately
-      // arrives before the socket is up, and commandTimeout still bounds it.
-      enableOfflineQueue: true,
-    });
+    globalThis.__queueRedis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", QUEUE_REDIS_OPTIONS);
     // Without a listener, a connection-level error is an unhandled 'error'
     // event on an EventEmitter, which crashes the function outright.
     globalThis.__queueRedis.on("error", (err: Error) => {
